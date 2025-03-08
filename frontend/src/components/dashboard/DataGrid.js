@@ -6,6 +6,7 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
+import excelFunctions from "../../utils/ExcelFunctions";
 
 const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) => {
     const [headers, setHeaders] = useState(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
@@ -14,6 +15,9 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
     const fileInputRef = useRef(null);
     const [chartConfig, setChartConfig] = useState(null);
     const CHART_SIZE = { width: 5, height: 5 }; // 5x5 chart size
+    const [formulaBar, setFormulaBar] = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+    const [formulas, setFormulas] = useState({});
 
     // Generate row numbers
     const rowNumbers = Array.from({ length: data.length }, (_, i) => i + 1);
@@ -29,14 +33,211 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
         }
     }, [data]);
 
+    // Function to get range of cells (e.g., A1:A2)
+    const getCellRange = (start, end) => {
+        try {
+            const startCol = start.match(/[A-Z]+/)[0];
+            const startRow = parseInt(start.match(/[0-9]+/)[0]) - 1;
+            const endCol = end.match(/[A-Z]+/)[0];
+            const endRow = parseInt(end.match(/[0-9]+/)[0]) - 1;
+
+            const startColIndex = startCol.split('').reduce((acc, char) => 
+                acc * 26 + char.charCodeAt(0) - 'A'.charCodeAt(0), 0
+            );
+            const endColIndex = endCol.split('').reduce((acc, char) => 
+                acc * 26 + char.charCodeAt(0) - 'A'.charCodeAt(0), 0
+            );
+
+            const values = [];
+            for (let row = startRow; row <= endRow; row++) {
+                for (let col = startColIndex; col <= endColIndex; col++) {
+                    const value = parseFloat(data[row]?.[col]) || 0;
+                    values.push(value);
+                }
+            }
+            return values;
+        } catch (error) {
+            return [];
+        }
+    };
+
+    // Excel functions
+    const excelFunctions = {
+        SUM: (values) => values.reduce((sum, val) => sum + (parseFloat(val) || 0), 0),
+        AVERAGE: (values) => values.length ? excelFunctions.SUM(values) / values.length : 0,
+        MAX: (values) => Math.max(...values.map(v => parseFloat(v) || 0)),
+        MIN: (values) => Math.min(...values.map(v => parseFloat(v) || 0)),
+        COUNT: (values) => values.filter(v => !isNaN(parseFloat(v))).length
+    };
+
+    // Function to get cell value from a reference like 'A1'
+    const getCellValue = (cellRef) => {
+        try {
+            const col = cellRef.match(/[A-Z]+/)[0];
+            const row = parseInt(cellRef.match(/[0-9]+/)[0]) - 1;
+            const colIndex = col.split('').reduce((acc, char) => 
+                acc * 26 + char.charCodeAt(0) - 'A'.charCodeAt(0), 0
+            );
+            const value = data[row]?.[colIndex];
+            return parseFloat(value) || 0;
+        } catch (error) {
+            return 0;
+        }
+    };
+
+    // Function to evaluate formula
+    const evaluateFormula = (formula) => {
+        if (!formula.startsWith('=')) return formula;
+
+        try {
+            // Check for Excel functions
+            const functionMatch = formula.match(/^=([A-Z]+)\((.*)\)$/);
+            if (functionMatch) {
+                const [_, functionName, params] = functionMatch;
+                const fn = excelFunctions[functionName];
+                if (!fn) return '#NAME?';
+
+                // Check for range notation (e.g., A1:A2)
+                const rangeMatch = params.match(/([A-Z]+[0-9]+):([A-Z]+[0-9]+)/);
+                if (rangeMatch) {
+                    const [_, start, end] = rangeMatch;
+                    const values = getCellRange(start, end);
+                    return fn(values).toString();
+                }
+
+                // Handle comma-separated values
+                const values = params.split(',').map(param => {
+                    const cellRef = param.trim().match(/[A-Z]+[0-9]+/);
+                    return cellRef ? getCellValue(cellRef[0]) : parseFloat(param.trim());
+                });
+                return fn(values).toString();
+            }
+
+            // Handle basic arithmetic
+            let expression = formula.substring(1);
+            expression = expression.replace(/[A-Z]+[0-9]+/g, (cellRef) => {
+                return getCellValue(cellRef);
+            });
+            // eslint-disable-next-line no-eval
+            const result = eval(expression);
+            return isNaN(result) ? '#ERROR!' : result.toString();
+        } catch (error) {
+            return '#ERROR!';
+        }
+    };
+
+    // Function to get cell display value
+    const getCellDisplayValue = (rowIndex, colIndex) => {
+        const cellKey = `${rowIndex}-${colIndex}`;
+        const formula = formulas[cellKey];
+        if (formula) {
+            return evaluateFormula(formula);
+        }
+        return data[rowIndex]?.[colIndex] || '';
+    };
+
+    // Modified handleCellChange
     const handleCellChange = (rowIndex, colIndex, value) => {
         const newData = [...data];
         if (!newData[rowIndex]) {
             newData[rowIndex] = [];
         }
-        newData[rowIndex][colIndex] = value;
+
+        const cellKey = `${rowIndex}-${colIndex}`;
+
+        if (value.startsWith('=')) {
+            // Store the formula
+            setFormulas(prev => ({
+                ...prev,
+                [cellKey]: value
+            }));
+            // Store the evaluated result in the data
+            const result = evaluateFormula(value);
+            newData[rowIndex][colIndex] = result;
+        } else {
+            // If it's not a formula, remove any stored formula and store the value
+            const newFormulas = { ...formulas };
+            delete newFormulas[cellKey];
+            setFormulas(newFormulas);
+            newData[rowIndex][colIndex] = value;
+        }
+
         setData(newData);
+
+        // Re-evaluate all formulas
+        Object.entries(formulas).forEach(([key, formula]) => {
+            const [r, c] = key.split('-').map(Number);
+            if (r !== rowIndex || c !== colIndex) { // Don't re-evaluate the current cell
+                newData[r][c] = evaluateFormula(formula);
+            }
+        });
     };
+
+    // Add this effect to update formula results when data changes
+    useEffect(() => {
+        const newData = [...data];
+        let hasChanges = false;
+
+        Object.entries(formulas).forEach(([key, formula]) => {
+            const [row, col] = key.split('-').map(Number);
+            const result = evaluateFormula(formula);
+            if (newData[row]?.[col] !== result) {
+                if (!newData[row]) newData[row] = [];
+                newData[row][col] = result;
+                hasChanges = true;
+            }
+        });
+
+        if (hasChanges) {
+            setData(newData);
+        }
+    }, [data, formulas]);
+
+    // Add keyboard navigation
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (activeCell) {
+                const { key, shiftKey } = e;
+                const { row, col } = activeCell;
+                let newRow = row;
+                let newCol = col;
+
+                switch (key) {
+                    case 'ArrowUp':
+                        newRow = Math.max(0, row - 1);
+                        e.preventDefault();
+                        break;
+                    case 'ArrowDown':
+                        newRow = Math.min(data.length - 1, row + 1);
+                        e.preventDefault();
+                        break;
+                    case 'ArrowLeft':
+                        newCol = Math.max(0, col - 1);
+                        e.preventDefault();
+                        break;
+                    case 'ArrowRight':
+                        newCol = Math.min(headers.length - 1, col + 1);
+                        e.preventDefault();
+                        break;
+                    case 'Tab':
+                        newCol = shiftKey ? Math.max(0, col - 1) : Math.min(headers.length - 1, col + 1);
+                        e.preventDefault();
+                        break;
+                    case 'Enter':
+                        newRow = Math.min(data.length - 1, row + 1);
+                        e.preventDefault();
+                        break;
+                }
+
+                if (newRow !== row || newCol !== col) {
+                    onCellClick(newRow, newCol);
+                }
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [activeCell, data, headers.length]);
 
     const handleAddRow = () => {
         const newRow = Array(headers.length).fill('');
@@ -275,6 +476,25 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
                 className="hidden"
             />
             
+            {/* Add Formula Bar */}
+            <div className="flex items-center px-2 py-1 border-b border-gray-200">
+                <div className="flex items-center bg-white border border-gray-300 rounded px-2">
+                    <span className="text-gray-500 mr-2">fx</span>
+                    <input
+                        type="text"
+                        value={formulaBar}
+                        onChange={(e) => {
+                            setFormulaBar(e.target.value);
+                            if (activeCell) {
+                                handleCellChange(activeCell.row, activeCell.col, e.target.value);
+                            }
+                        }}
+                        className="w-full outline-none py-1"
+                        placeholder="Enter formula..."
+                    />
+                </div>
+            </div>
+            
             <div className="flex-1 overflow-auto">
                 <table className="border-collapse w-full">
                     <thead>
@@ -326,8 +546,17 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
                                         ) : (
                                             <input
                                                 type="text"
-                                                value={cell || ''}
+                                                value={
+                                                    activeCell?.row === rowIndex && 
+                                                    activeCell?.col === colIndex
+                                                        ? formulas[`${rowIndex}-${colIndex}`] || cell || ''
+                                                        : getCellDisplayValue(rowIndex, colIndex)
+                                                }
                                                 onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
+                                                onFocus={() => setIsEditing(true)}
+                                                onBlur={() => setIsEditing(false)}
+                                                data-row={rowIndex}
+                                                data-col={colIndex}
                                                 className="w-full border-none focus:outline-none bg-transparent"
                                                 onPaste={handlePaste}
                                             />
