@@ -1,0 +1,133 @@
+const express = require('express');
+const router = express.Router();
+const auth = require('../middleware/auth');
+const Record = require('../models/Record');
+const OpenAI = require('openai');
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+ apiKey: process.env.OPENAI_API_KEY
+});
+
+// @route   POST api/chat/analyze
+// @desc    Analyze data using OpenAI API
+router.post('/analyze', auth, async (req, res) => {
+  try {
+    const { message, recordId, includeChartSuggestion } = req.body;
+    
+    let dataContext = '';
+    let chartPrompt = '';
+    
+    if (recordId) {
+      const record = await Record.findById(recordId);
+      if (!record) {
+        return res.status(404).json({ msg: 'Record not found' });
+      }
+      
+      dataContext = 'Here is the data to analyze:\n';
+      if (record.data && record.data.length > 0) {
+        const headers = Object.keys(record.data[0]);
+        dataContext += headers.join(', ') + '\n';
+        
+        record.data.forEach(row => {
+          dataContext += headers.map(header => row[header]).join(', ') + '\n';
+        });
+      }
+
+      if (includeChartSuggestion) {
+        chartPrompt = `
+If appropriate, suggest a visualization by providing a JSON configuration in the following format:
+\`\`\`json
+{
+  "type": "line|bar|pie|area|scatter",
+  "xAxis": "column_name",
+  "yAxis": "column_name",
+  "categories": "optional_category_column"
+}
+\`\`\`
+Wrap the JSON in code blocks as shown above.
+`;
+      }
+    }
+    
+    const systemMessage = `You are a helpful data analyst assistant. Analyze the provided data and answer questions about it clearly and concisely. ${includeChartSuggestion ? 'When asked about visualizations, provide specific chart configurations in JSON format.' : ''}`;
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [
+        { role: "system", content: systemMessage },
+        { role: "user", content: `${dataContext}\n\nQuestion: ${message}\n\n${chartPrompt}` }
+      ],
+      temperature: 0.7,
+      max_tokens: 1000
+    });
+    
+    res.json({ 
+      answer: completion.choices[0].message.content,
+      recordId
+    });
+    
+  } catch (err) {
+    console.error('Chat API Error:', err);
+    res.status(500).json({ 
+      error: 'Server Error',
+      details: err.message 
+    });
+  }
+});
+
+// @route   POST api/chat/visualize
+// @desc    Generate visualization suggestions for data
+router.post('/visualize', auth, async (req, res) => {
+  try {
+    const { recordId } = req.body;
+    
+    const record = await Record.findById(recordId);
+    if (!record) {
+      return res.status(404).json({ msg: 'Record not found' });
+    }
+    
+    // Format the data for visualization analysis
+    let dataDescription = 'Here is the data structure:\n';
+    if (record.data && record.data.length > 0) {
+      const headers = Object.keys(record.data[0]);
+      dataDescription += `Columns: ${headers.join(', ')}\n`;
+      dataDescription += `Number of rows: ${record.data.length}\n`;
+      
+      // Add sample data
+      dataDescription += '\nSample data (first 3 rows):\n';
+      record.data.slice(0, 3).forEach(row => {
+        dataDescription += JSON.stringify(row) + '\n';
+      });
+    }
+    
+    const prompt = `Based on this data structure, suggest appropriate visualization types and analysis methods. ${dataDescription}`;
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4-turbo-preview",
+      messages: [
+        { 
+          role: "system", 
+          content: "You are a data visualization expert. Suggest appropriate charts and visualizations based on the data structure provided." 
+        },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 1000
+    });
+    
+    res.json({ 
+      suggestions: completion.choices[0].message.content,
+      recordId
+    });
+    
+  } catch (err) {
+    console.error('Visualization API Error:', err);
+    res.status(500).json({ 
+      error: 'Server Error',
+      details: err.message 
+    });
+  }
+});
+
+module.exports = router; 
