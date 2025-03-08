@@ -12,7 +12,8 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
     const [fileName, setFileName] = useState('');
     const { token } = useAuth();
     const fileInputRef = useRef(null);
-    const [chartDimensions, setChartDimensions] = useState({ width: 5, height: 5 }); // 5x5 chart size
+    const [chartConfig, setChartConfig] = useState(null);
+    const CHART_SIZE = { width: 5, height: 5 }; // 5x5 chart size
 
     // Generate row numbers
     const rowNumbers = Array.from({ length: data.length }, (_, i) => i + 1);
@@ -30,6 +31,9 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
 
     const handleCellChange = (rowIndex, colIndex, value) => {
         const newData = [...data];
+        if (!newData[rowIndex]) {
+            newData[rowIndex] = [];
+        }
         newData[rowIndex][colIndex] = value;
         setData(newData);
     };
@@ -171,162 +175,97 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
         }
     };
 
-    // Function to prepare chart data from the spreadsheet
+    // Function to prepare chart data
     const prepareChartData = () => {
         if (!data || data.length < 2) return [];
-        
-        // Get data from columns A and B (indices 0 and 1)
-        return data.filter(row => row[0] && row[1]).map(row => ({
-            name: row[0],
+        return data.slice(0, data.length).map((row, index) => ({
+            name: row[0] || `Row ${index + 1}`,
             value: parseFloat(row[1]) || 0
         }));
     };
-    
-    // Function to create a chart at the active cell
-    const createChartAtActiveCell = (chartType = 'line') => {
-        if (!activeCell) return;
-        
-        const chartData = prepareChartData();
-        if (chartData.length === 0) {
-            alert("Please enter data in columns A and B before creating a chart");
-            return;
-        }
+
+    // Function to create chart
+    const createChart = (type = 'bar', startCell = activeCell) => {
+        if (!startCell) return;
         
         const newData = [...data];
-        
-        // Ensure we have enough rows and columns
-        while (newData.length <= activeCell.row + chartDimensions.height) {
-            newData.push([]);
+        // Ensure we have enough rows and columns for the chart
+        while (newData.length <= startCell.row + CHART_SIZE.height) {
+            newData.push(Array(newData[0]?.length || 1).fill(''));
         }
-        
-        // Mark the starting cell with chart type
-        newData[activeCell.row][activeCell.col] = `CHART:${chartType}:START`;
-        
-        // Mark other cells in the chart area as occupied
-        for (let i = 0; i < chartDimensions.height; i++) {
-            if (!newData[activeCell.row + i]) {
-                newData[activeCell.row + i] = [];
-            }
-            
-            for (let j = 0; j < chartDimensions.width; j++) {
-                if (i === 0 && j === 0) continue; // Skip the start cell
-                newData[activeCell.row + i][activeCell.col + j] = 'CHART:OCCUPIED';
+
+        // Mark the chart area
+        for (let i = 0; i < CHART_SIZE.height; i++) {
+            for (let j = 0; j < CHART_SIZE.width; j++) {
+                if (!newData[startCell.row + i]) {
+                    newData[startCell.row + i] = [];
+                }
+                if (i === 0 && j === 0) {
+                    newData[startCell.row][startCell.col] = `CHART:${type}:START`;
+                } else {
+                    newData[startCell.row + i][startCell.col + j] = 'CHART:OCCUPIED';
+                }
             }
         }
-        
+
         setData(newData);
+        setChartConfig({
+            type,
+            startCell: { ...startCell },
+            size: CHART_SIZE
+        });
     };
-    
-    // Function to render different chart types
-    const renderChart = (chartType) => {
+
+    // Function to render chart
+    const renderChart = (type, startCell) => {
         const chartData = prepareChartData();
-        
         const chartStyle = {
+            width: `${CHART_SIZE.width * 120}px`,
+            height: `${CHART_SIZE.height * 25}px`,
             position: 'absolute',
-            top: '0',
-            left: '0',
-            width: `${chartDimensions.width * 120}px`,
-            height: `${chartDimensions.height * 30}px`,
             backgroundColor: 'white',
-            zIndex: 100,
             border: '1px solid #ddd',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
             borderRadius: '4px',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            zIndex: 10
         };
-        
+
         return (
-            <div className="chart-container" style={chartStyle}>
-                <div className="chart-title" style={{
-                    padding: '8px 12px',
-                    borderBottom: '1px solid #eee',
-                    fontWeight: 'bold',
-                    backgroundColor: '#f9fafb'
-                }}>
-                    {chartType.charAt(0).toUpperCase() + chartType.slice(1)} Chart
-                </div>
-                <ResponsiveContainer width="100%" height="90%">
-                    {chartType === 'line' && (
-                        <LineChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
+            <div style={chartStyle}>
+                <ResponsiveContainer width="100%" height="100%">
+                    {type === 'bar' && (
+                        <BarChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="name" />
                             <YAxis />
                             <Tooltip />
                             <Legend />
-                            <Line type="monotone" dataKey="value" stroke="#4f46e5" strokeWidth={2} />
-                        </LineChart>
-                    )}
-                    {chartType === 'bar' && (
-                        <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            <Bar dataKey="value" fill="#4f46e5" />
+                            <Bar dataKey="value" fill="#8884d8" />
                         </BarChart>
                     )}
-                    {chartType === 'pie' && (
-                        <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
-                            <Pie
-                                data={chartData}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={true}
-                                outerRadius={80}
-                                fill="#8884d8"
-                                dataKey="value"
-                                nameKey="name"
-                                label
-                            />
-                            <Tooltip />
-                            <Legend />
-                        </PieChart>
-                    )}
-                    {chartType === 'area' && (
-                        <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
+                    {type === 'line' && (
+                        <LineChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="name" />
                             <YAxis />
                             <Tooltip />
                             <Legend />
-                            <Area type="monotone" dataKey="value" stroke="#4f46e5" fill="#c7d2fe" />
-                        </AreaChart>
+                            <Line type="monotone" dataKey="value" stroke="#8884d8" />
+                        </LineChart>
                     )}
+                    {/* Add other chart types as needed */}
                 </ResponsiveContainer>
             </div>
         );
     };
-    
-    // Function to get cell content based on cell value
-    const getCellContent = (rowIndex, colIndex, cell) => {
-        if (cell && cell.startsWith('CHART:')) {
-            if (cell.includes(':START')) {
-                const chartType = cell.split(':')[1];
-                return renderChart(chartType);
-            } else if (cell === 'CHART:OCCUPIED') {
-                return null; // These cells are part of the chart but don't render anything
-            }
-        }
-        
-        return (
-            <input
-                type="text"
-                value={cell || ''}
-                onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
-                className="w-full h-6 px-1 border-0 focus:outline-none text-sm"
-                onPaste={handlePaste}
-            />
-        );
-    };
 
-    // Expose functions to parent component
+    // Expose createChart to parent components
     useImperativeHandle(ref, () => ({
-        createChartAtActiveCell
+        createChart
     }));
 
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col relative">
             {/* Hidden file input */}
             <input
                 type="file"
@@ -336,8 +275,7 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
                 className="hidden"
             />
             
-            {/* Excel-like grid */}
-            <div className="flex-1 overflow-auto relative">
+            <div className="flex-1 overflow-auto">
                 <table className="border-collapse w-full">
                     <thead>
                         <tr>
@@ -366,20 +304,34 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
                                 {/* Cells */}
                                 {row.map((cell, colIndex) => (
                                     <td 
-                                        key={colIndex} 
-                                        className={`border border-gray-200 p-0 relative ${
+                                        key={colIndex}
+                                        onClick={() => onCellClick(rowIndex, colIndex)}
+                                        className={`border border-gray-200 p-1 relative ${
                                             activeCell?.row === rowIndex && 
                                             activeCell?.col === colIndex 
-                                                ? 'bg-blue-50 outline outline-2 outline-blue-500 z-10' 
+                                                ? 'bg-blue-50 outline outline-2 outline-blue-500' 
                                                 : ''
                                         } ${cell === 'CHART:OCCUPIED' ? 'bg-gray-50' : ''}`}
-                                        onClick={() => onCellClick(rowIndex, colIndex)}
                                         style={{ 
                                             minWidth: '120px',
-                                            height: '30px'
+                                            height: '25px'
                                         }}
                                     >
-                                        {getCellContent(rowIndex, colIndex, cell)}
+                                        {cell?.startsWith('CHART:') ? (
+                                            cell.includes(':START') && 
+                                            renderChart(
+                                                cell.split(':')[1], 
+                                                { row: rowIndex, col: colIndex }
+                                            )
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={cell || ''}
+                                                onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
+                                                className="w-full border-none focus:outline-none bg-transparent"
+                                                onPaste={handlePaste}
+                                            />
+                                        )}
                                     </td>
                                 ))}
                             </tr>

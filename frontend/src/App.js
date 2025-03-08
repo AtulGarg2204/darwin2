@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Login from './components/auth/Login';
 import Register from './components/auth/Register';
@@ -7,6 +7,7 @@ import Dashboard from './components/dashboard/Dashboard';
 import HomePage from './components/home/HomePage';
 import PrivateRoute from './components/layout/PrivateRoute';
 import { AuthProvider } from './context/AuthContext';
+import useSpreadsheetHistory from './hooks/useSpreadsheetHistory';
 import './App.css';
 
 function App() {
@@ -16,21 +17,41 @@ function App() {
     ['', '', '', '']
   ]);
   const [activeCell, setActiveCell] = useState({ row: 0, col: 0 });
-  const dashboardRef = useRef();
+  const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(currentData);
+
+  const handleDataChange = (newData) => {
+    setCurrentData(newData);
+    pushState(newData);
+  };
 
   const handleNewFile = () => {
-    setCurrentData([
+    const newData = [
       ['', '', '', ''],
       ['', '', '', ''],
       ['', '', '', '']
-    ]);
+    ];
+    handleDataChange(newData);
   };
 
   const handleDataLoad = (data) => {
     if (!data || !data.length) {
       data = [['']];
     }
-    setCurrentData(data);
+    handleDataChange(data);
+  };
+
+  const handleUndo = () => {
+    const previousState = undo();
+    if (previousState) {
+      setCurrentData(previousState);
+    }
+  };
+
+  const handleRedo = () => {
+    const nextState = redo();
+    if (nextState) {
+      setCurrentData(nextState);
+    }
   };
 
   return (
@@ -39,11 +60,14 @@ function App() {
         <div className="flex flex-col h-screen">
           <Navbar 
             currentData={currentData}
+            setCurrentData={handleDataChange}
+            activeCell={activeCell}
+            undoHistory={handleUndo}
+            redoHistory={handleRedo}
+            canUndo={canUndo}
+            canRedo={canRedo}
             onNewFile={handleNewFile}
             onDataLoad={handleDataLoad}
-            activeCell={activeCell}
-            undoHistory={() => dashboardRef.current?.undo()}
-            redoHistory={() => dashboardRef.current?.redo()}
           />
           <div className="flex-1 overflow-hidden">
             <Routes>
@@ -55,9 +79,8 @@ function App() {
                 element={
                   <PrivateRoute>
                     <Dashboard 
-                      ref={dashboardRef}
-                      currentData={currentData} 
-                      setCurrentData={setCurrentData}
+                      currentData={currentData}
+                      setCurrentData={handleDataChange}
                       activeCell={activeCell}
                       setActiveCell={setActiveCell}
                     />

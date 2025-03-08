@@ -3,7 +3,7 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import ChartMessage from './ChartMessage';
 
-const ChatInterface = ({ recordId, data, onChartRequest }) => {
+const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
@@ -32,29 +32,20 @@ const ChatInterface = ({ recordId, data, onChartRequest }) => {
         setInput('');
         setLoading(true);
 
-        // Check if message is about generating a chart
+        // Check for chart creation request
         const userInput = input.toLowerCase();
-        if (userInput.includes('draw') || userInput.includes('create') || userInput.includes('generate')) {
-            let chartType = 'line'; // Default chart type
-            
-            if (userInput.includes('line chart') || userInput.includes('line graph')) {
-                chartType = 'line';
-            } else if (userInput.includes('bar chart') || userInput.includes('bar graph')) {
-                chartType = 'bar';
-            } else if (userInput.includes('pie chart')) {
-                chartType = 'pie';
-            } else if (userInput.includes('area chart')) {
-                chartType = 'area';
-            }
-            
-            onChartRequest(chartType); // Pass the chart type to the parent component
+        if (userInput.includes('chart') || userInput.includes('graph')) {
+            let chartType = 'bar';
+            if (userInput.includes('line')) chartType = 'line';
+            if (userInput.includes('pie')) chartType = 'pie';
+            if (userInput.includes('area')) chartType = 'area';
+
+            onChartRequest(chartType);
             
             setMessages(prev => [...prev, {
-                text: `I'll help you create a ${chartType} chart using the data from columns A and B. I've placed the chart at your selected cell position.`,
+                text: `I've created a ${chartType} chart at the selected cell.`,
                 sender: 'assistant'
             }]);
-            
-            setLoading(false);
             return;
         }
 

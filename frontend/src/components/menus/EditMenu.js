@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 
-const EditMenu = ({ activeCell, currentData, setCurrentData, undoHistory, redoHistory }) => {
+const EditMenu = ({ 
+    activeCell, 
+    currentData, 
+    setCurrentData, 
+    undoHistory, 
+    redoHistory,
+    canUndo,
+    canRedo 
+}) => {
     const [showEditMenu, setShowEditMenu] = useState(false);
     const [clipboard, setClipboard] = useState(null);
 
@@ -66,14 +74,14 @@ const EditMenu = ({ activeCell, currentData, setCurrentData, undoHistory, redoHi
             shortcut: 'Ctrl+Z', 
             onClick: undoHistory, 
             icon: '↩',
-            disabled: !undoHistory
+            disabled: !canUndo
         },
         { 
             label: 'Redo', 
             shortcut: 'Ctrl+Y', 
             onClick: redoHistory, 
             icon: '↪',
-            disabled: !redoHistory
+            disabled: !canRedo
         },
         { type: 'divider' },
         { 
@@ -132,18 +140,18 @@ const EditMenu = ({ activeCell, currentData, setCurrentData, undoHistory, redoHi
         }
     ];
 
-    // Handle keyboard shortcuts
+    // Update keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e) => {
             if (e.ctrlKey) {
                 switch (e.key.toLowerCase()) {
                     case 'z':
                         e.preventDefault();
-                        undoHistory?.();
+                        if (canUndo) undoHistory();
                         break;
                     case 'y':
                         e.preventDefault();
-                        redoHistory?.();
+                        if (canRedo) redoHistory();
                         break;
                     case 'x':
                         e.preventDefault();
@@ -173,7 +181,7 @@ const EditMenu = ({ activeCell, currentData, setCurrentData, undoHistory, redoHi
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activeCell, currentData, clipboard]);
+    }, [activeCell, currentData, clipboard, canUndo, canRedo, undoHistory, redoHistory]);
 
     return (
         <div className="relative">

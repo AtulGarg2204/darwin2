@@ -5,15 +5,18 @@ import ChatInterface from '../chat/ChatInterface';
 import Toolbar from './Toolbar';
 import useSpreadsheetHistory from '../../hooks/useSpreadsheetHistory';
 
-const Dashboard = ({ currentData, setCurrentData }) => {
+const Dashboard = ({ currentData, setCurrentData, activeCell, setActiveCell }) => {
     const [savedRecordId, setSavedRecordId] = useState(null);
-    const dataGridRef = useRef(null);
+    const dataGridRef = useRef();
     const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(currentData);
-    const [activeCell, setActiveCell] = useState({ row: 0, col: 0 });
+
+    const handleCellClick = (row, col) => {
+        setActiveCell({ row, col });
+    };
 
     const handleChartRequest = (chartType) => {
-        if (dataGridRef.current && dataGridRef.current.createChartAtActiveCell) {
-            dataGridRef.current.createChartAtActiveCell(chartType);
+        if (dataGridRef.current && activeCell) {
+            dataGridRef.current.createChart(chartType, activeCell);
         }
     };
 
@@ -22,17 +25,13 @@ const Dashboard = ({ currentData, setCurrentData }) => {
         pushState(newData);
     };
 
-    const handleCellClick = (row, col) => {
-        setActiveCell({ row, col });
-    };
-
     return (
         <div className="flex h-[calc(100vh-48px)]">
             {/* Left sidebar - Chat interface (25% width) */}
             <div className="w-1/4 border-r border-gray-200 bg-gray-50 overflow-y-auto">
                 <ChatInterface 
-                    recordId={savedRecordId} 
                     data={currentData}
+                    activeCell={activeCell}
                     onChartRequest={handleChartRequest}
                 />
             </div>
@@ -62,7 +61,7 @@ const Dashboard = ({ currentData, setCurrentData }) => {
                     <DataGrid 
                         ref={dataGridRef}
                         data={currentData}
-                        setData={(newData) => handleCellChange(newData)}
+                        setData={setCurrentData}
                         onDataSaved={(data, recordId) => {
                             setSavedRecordId(recordId);
                         }}

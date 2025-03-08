@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import EditMenu from '../menus/EditMenu';
 
-const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHistory, onNewFile, onDataLoad }) => {
+const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad }) => {
     const { user } = useAuth();
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileInputRef = useRef(null);
@@ -215,6 +215,8 @@ const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHist
                                 setCurrentData={setCurrentData}
                                 undoHistory={undoHistory}
                                 redoHistory={redoHistory}
+                                canUndo={canUndo}
+                                canRedo={canRedo}
                             />
 
                             {/* Other menu items */}
