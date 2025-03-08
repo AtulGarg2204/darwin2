@@ -3,12 +3,21 @@ import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import * as XLSX from 'xlsx';
 import { 
-  LineChart, Line, BarChart, Bar, PieChart, Pie, AreaChart, Area,
+  LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import excelFunctions from "../../utils/ExcelFunctions";
 
-const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) => {
+const DataGrid = forwardRef(({ 
+  data, 
+  setData, 
+  activeCell, 
+  onCellClick,
+  showHeaders,
+  showGridLines,
+  zoomLevel,
+  cellFormats
+}, ref) => {
     const [headers, setHeaders] = useState(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J']);
     const [fileName, setFileName] = useState('');
     const { token } = useAuth();
@@ -16,11 +25,10 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
     const [chartConfig, setChartConfig] = useState(null);
     const CHART_SIZE = { width: 5, height: 5 }; // 5x5 chart size
     const [formulaBar, setFormulaBar] = useState('');
-    const [isEditing, setIsEditing] = useState(false);
     const [formulas, setFormulas] = useState({});
-
+   console.log(chartConfig);
     // Generate row numbers
-    const rowNumbers = Array.from({ length: data.length }, (_, i) => i + 1);
+   
 
     // Update headers when data changes
     useEffect(() => {
@@ -126,15 +134,15 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
         }
     };
 
-    // Function to get cell display value
-    const getCellDisplayValue = (rowIndex, colIndex) => {
-        const cellKey = `${rowIndex}-${colIndex}`;
-        const formula = formulas[cellKey];
-        if (formula) {
-            return evaluateFormula(formula);
-        }
-        return data[rowIndex]?.[colIndex] || '';
-    };
+    // // Function to get cell display value
+    // const getCellDisplayValue = (rowIndex, colIndex) => {
+    //     const cellKey = `${rowIndex}-${colIndex}`;
+    //     const formula = formulas[cellKey];
+    //     if (formula) {
+    //         return evaluateFormula(formula);
+    //     }
+    //     return data[rowIndex]?.[colIndex] || '';
+    // };
 
     // Modified handleCellChange
     const handleCellChange = (rowIndex, colIndex, value) => {
@@ -239,16 +247,16 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [activeCell, data, headers.length]);
 
-    const handleAddRow = () => {
-        const newRow = Array(headers.length).fill('');
-        setData([...data, newRow]);
-    };
+    // const handleAddRow = () => {
+    //     const newRow = Array(headers.length).fill('');
+    //     setData([...data, newRow]);
+    // };
 
-    const handleAddColumn = () => {
-        const nextColLetter = String.fromCharCode(65 + headers.length);
-        setHeaders([...headers, nextColLetter]);
-        setData(data.map(row => [...row, '']));
-    };
+    // const handleAddColumn = () => {
+    //     const nextColLetter = String.fromCharCode(65 + headers.length);
+    //     setHeaders([...headers, nextColLetter]);
+    //     setData(data.map(row => [...row, '']));
+    // };
 
     const handlePaste = (e) => {
         e.preventDefault();
@@ -465,6 +473,60 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
         createChart
     }));
 
+    // Add zoom style
+    const gridStyle = {
+        transform: `scale(${zoomLevel / 100})`,
+        transformOrigin: '0 0',
+        width: `${100 * (100 / zoomLevel)}%`
+    };
+
+    // Add this function to format cell values
+    const formatCellValue = (value, rowIndex, colIndex) => {
+        if (value === '' || value === null || value === undefined) return '';
+        
+        const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
+        let formattedValue = value;
+        
+        if (!isNaN(parseFloat(value))) {
+            let numValue = parseFloat(value);
+            
+            if (format.isPercentage) {
+                formattedValue = `${(numValue * 100).toFixed(format.decimals || 0)}%`;
+            } else {
+                if (format.useCommas) {
+                    formattedValue = numValue.toLocaleString('en-US', {
+                        minimumFractionDigits: format.decimals || 0,
+                        maximumFractionDigits: format.decimals || 0
+                    });
+                } else {
+                    formattedValue = numValue.toFixed(format.decimals || 0);
+                }
+                
+                if (format.isCurrency) {
+                    formattedValue = `$${formattedValue}`;
+                }
+            }
+        }
+        
+        return formattedValue;
+    };
+
+    // Add this function to get cell styles
+    const getCellStyle = (rowIndex, colIndex) => {
+        const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
+        return {
+            fontWeight: format.bold ? 'bold' : 'normal',
+            fontStyle: format.italic ? 'italic' : 'normal',
+            textDecoration: [
+                format.underline && 'underline',
+                format.strikethrough && 'line-through'
+            ].filter(Boolean).join(' '),
+            color: format.textColor || 'inherit',
+            backgroundColor: format.fillColor || 'inherit',
+            textAlign: format.align || 'left'
+        };
+    };
+
     return (
         <div className="h-full flex flex-col relative">
             {/* Hidden file input */}
@@ -496,46 +558,42 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
             </div>
             
             <div className="flex-1 overflow-auto">
-                <table className="border-collapse w-full">
-                    <thead>
-                        <tr>
-                            {/* Empty corner cell */}
-                            <th className="w-10 h-6 bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500"></th>
-                            
-                            {/* Column headers (A, B, C, etc.) */}
-                            {headers.map((header, index) => (
-                                <th 
-                                    key={index} 
-                                    className="w-24 h-6 bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500"
-                                >
-                                    {header}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
+                <table className="border-collapse w-full" style={gridStyle}>
+                    {showHeaders && (
+                        <thead>
+                            <tr>
+                                <th className="w-10 bg-gray-100 border border-gray-300"></th>
+                                {headers.map((header, index) => (
+                                    <th 
+                                        key={index}
+                                        className="w-24 bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500"
+                                    >
+                                        {header}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                    )}
                     <tbody>
                         {data.map((row, rowIndex) => (
                             <tr key={rowIndex}>
-                                {/* Row number */}
-                                <td className="w-10 bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500">
-                                    {rowNumbers[rowIndex]}
-                                </td>
-                                
-                                {/* Cells */}
+                                {showHeaders && (
+                                    <td className="w-10 bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500">
+                                        {rowIndex + 1}
+                                    </td>
+                                )}
                                 {row.map((cell, colIndex) => (
                                     <td 
                                         key={colIndex}
                                         onClick={() => onCellClick(rowIndex, colIndex)}
-                                        className={`border border-gray-200 p-1 relative ${
-                                            activeCell?.row === rowIndex && 
+                                        className={`
+                                            ${showGridLines ? 'border border-gray-200' : 'border-0'} 
+                                            p-1 relative
+                                            ${activeCell?.row === rowIndex && 
                                             activeCell?.col === colIndex 
                                                 ? 'bg-blue-50 outline outline-2 outline-blue-500' 
-                                                : ''
-                                        } ${cell === 'CHART:OCCUPIED' ? 'bg-gray-50' : ''}`}
-                                        style={{ 
-                                            minWidth: '120px',
-                                            height: '25px'
-                                        }}
+                                                : ''}
+                                        `}
                                     >
                                         {cell?.startsWith('CHART:') ? (
                                             cell.includes(':START') && 
@@ -547,16 +605,12 @@ const DataGrid = forwardRef(({ data, setData, activeCell, onCellClick }, ref) =>
                                             <input
                                                 type="text"
                                                 value={
-                                                    activeCell?.row === rowIndex && 
-                                                    activeCell?.col === colIndex
-                                                        ? formulas[`${rowIndex}-${colIndex}`] || cell || ''
-                                                        : getCellDisplayValue(rowIndex, colIndex)
+                                                    activeCell?.row === rowIndex && activeCell?.col === colIndex
+                                                        ? data[rowIndex][colIndex] || ''
+                                                        : formatCellValue(data[rowIndex][colIndex], rowIndex, colIndex)
                                                 }
                                                 onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
-                                                onFocus={() => setIsEditing(true)}
-                                                onBlur={() => setIsEditing(false)}
-                                                data-row={rowIndex}
-                                                data-col={colIndex}
+                                                style={getCellStyle(rowIndex, colIndex)}
                                                 className="w-full border-none focus:outline-none bg-transparent"
                                                 onPaste={handlePaste}
                                             />

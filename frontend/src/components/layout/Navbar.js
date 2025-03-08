@@ -3,8 +3,11 @@ import { useAuth } from '../../context/AuthContext';
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import EditMenu from '../menus/EditMenu';
+import ViewMenu from '../menus/ViewMenu';
+import InsertMenu from '../menus/InsertMenu';
+import FormatMenu from '../menus/FormatMenu';
 
-const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad }) => {
+const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad, showHeaders, setShowHeaders, showGridLines, setShowGridLines, zoomLevel, setZoomLevel, onFormatChange }) => {
     const { user } = useAuth();
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileInputRef = useRef(null);
@@ -129,27 +132,27 @@ const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHist
     };
 
     // Edit menu handlers
-    const handleUndo = () => {
-        // Implement undo functionality
-        console.log('Undo');
-    };
+    // const handleUndo = () => {
+    //     // Implement undo functionality
+    //     console.log('Undo');
+    // };
 
-    const handleRedo = () => {
-        // Implement redo functionality
-        console.log('Redo');
-    };
+    // const handleRedo = () => {
+    //     // Implement redo functionality
+    //     console.log('Redo');
+    // };
 
-    const handleCut = () => {
-        document.execCommand('cut');
-    };
+    // const handleCut = () => {
+    //     document.execCommand('cut');
+    // };
 
-    const handleCopy = () => {
-        document.execCommand('copy');
-    };
+    // const handleCopy = () => {
+    //     document.execCommand('copy');
+    // };
 
-    const handlePaste = () => {
-        document.execCommand('paste');
-    };
+    // const handlePaste = () => {
+    //     document.execCommand('paste');
+    // };
 
     // Dashboard navbar with full menu
     return (
@@ -219,16 +222,23 @@ const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHist
                                 canRedo={canRedo}
                             />
 
+                            {/* View Menu */}
+                            <ViewMenu 
+                                showHeaders={showHeaders}
+                                setShowHeaders={setShowHeaders}
+                                showGridLines={showGridLines}
+                                setShowGridLines={setShowGridLines}
+                                zoomLevel={zoomLevel}
+                                setZoomLevel={setZoomLevel}
+                            />
+
+                            {/* Insert Menu */}
+                            <InsertMenu onDataLoad={onDataLoad} />
+
+                            {/* Format Menu */}
+                            <FormatMenu onFormatChange={onFormatChange} />
+
                             {/* Other menu items */}
-                            <button className="flex items-center text-sm text-gray-700 hover:bg-gray-100 px-3 py-1 rounded">
-                                <span className="mr-1">View</span>
-                            </button>
-                            <button className="flex items-center text-sm text-gray-700 hover:bg-gray-100 px-3 py-1 rounded">
-                                <span className="mr-1">Insert</span>
-                            </button>
-                            <button className="flex items-center text-sm text-gray-700 hover:bg-gray-100 px-3 py-1 rounded">
-                                <span className="mr-1">Format</span>
-                            </button>
                             <button className="flex items-center text-sm text-gray-700 hover:bg-gray-100 px-3 py-1 rounded">
                                 <span className="mr-1">Help</span>
                             </button>

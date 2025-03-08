@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState} from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import ChartMessage from './ChartMessage';
@@ -8,7 +8,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const { token } = useAuth();
-    const messagesEndRef = useRef(null);
+   
 
     const parseChartConfig = (text) => {
         try {
