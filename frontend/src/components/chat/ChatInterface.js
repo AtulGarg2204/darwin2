@@ -1,4 +1,4 @@
-import React, { useState} from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import ChartMessage from './ChartMessage';
@@ -9,7 +9,6 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
     const [loading, setLoading] = useState(false);
     const { token } = useAuth();
    
-
     const parseChartConfig = (text) => {
         try {
             const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
@@ -23,6 +22,43 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
         }
     };
 
+    // Helper function to extract column names from user message
+    const extractColumns = (userInput, availableColumns) => {
+        const words = userInput.toLowerCase().split(/\s+/);
+        const mentionedColumns = [];
+        
+        // First pass: look for exact column matches
+        for (const col of availableColumns) {
+            const colLower = col.toLowerCase();
+            if (words.includes(colLower)) {
+                mentionedColumns.push(col);
+            }
+        }
+        
+        // If we couldn't find exact matches, look for partial matches
+        if (mentionedColumns.length < 2) {
+            for (const col of availableColumns) {
+                const colLower = col.toLowerCase();
+                if (!mentionedColumns.includes(col) && 
+                    words.some(word => word.includes(colLower) || colLower.includes(word))) {
+                    mentionedColumns.push(col);
+                }
+                
+                if (mentionedColumns.length >= 2) break;
+            }
+        }
+        
+        // Return default if we still don't have enough
+        if (mentionedColumns.length < 2 && availableColumns.length >= 2) {
+            return { x: availableColumns[0], y: availableColumns[1] };
+        }
+        
+        return { 
+            x: mentionedColumns[0] || availableColumns[0] || 'name', 
+            y: mentionedColumns[1] || availableColumns[1] || 'value' 
+        };
+    };
+
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!input.trim()) return;
@@ -32,22 +68,12 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
         setInput('');
         setLoading(true);
 
-        // Check for chart creation request
         const userInput = input.toLowerCase();
-        if (userInput.includes('chart') || userInput.includes('graph')) {
-            let chartType = 'bar';
-            if (userInput.includes('line')) chartType = 'line';
-            if (userInput.includes('pie')) chartType = 'pie';
-            if (userInput.includes('area')) chartType = 'area';
-
-            onChartRequest(chartType);
-            
-            setMessages(prev => [...prev, {
-                text: `I've created a ${chartType} chart at the selected cell.`,
-                sender: 'assistant'
-            }]);
-            return;
-        }
+        const isChartRequest = userInput.includes('chart') || 
+                               userInput.includes('graph') || 
+                               userInput.includes('plot') || 
+                               userInput.includes('visualize') || 
+                               userInput.includes('show');
 
         try {
             const res = await axios.post(
@@ -55,21 +81,31 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
                 {
                     message: input,
                     recordId,
-                    includeChartSuggestion: input.toLowerCase().includes('chart') ||
-                        input.toLowerCase().includes('graph') ||
-                        input.toLowerCase().includes('show') ||
-                        input.toLowerCase().includes('visualize')
+                    includeChartSuggestion: isChartRequest,
+                    data // Pass the current data to the API
                 },
                 { headers: { 'x-auth-token': token } }
             );
 
-            const chartConfig = parseChartConfig(res.data.answer);
-            
-            setMessages(prev => [...prev, {
+            const assistantMessage = {
                 text: res.data.answer,
-                sender: 'assistant',
-                chartConfig: chartConfig
-            }]);
+                sender: 'assistant'
+            };
+
+            // If we have chart configuration and active cell, create the chart in the grid
+            if (res.data.chartConfig && activeCell && typeof onChartRequest === 'function') {
+                // Call the createChart function with the AI response
+                onChartRequest(res.data.chartConfig.type, activeCell, res.data.chartConfig);
+                assistantMessage.text += "\n\nI've created the chart at the selected cell.";
+            } 
+            // If we have chart config but no active cell, show it in the chat
+            else if (res.data.chartConfig) {
+                assistantMessage.chartConfig = res.data.chartConfig;
+                assistantMessage.chartData = res.data.data;
+                assistantMessage.text += "\n\nPlease select a cell in the grid where you'd like me to create this chart.";
+            }
+
+            setMessages(prev => [...prev, assistantMessage]);
         } catch (err) {
             console.error('Chat error:', err);
             setMessages(prev => [...prev, {
@@ -86,7 +122,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
             <div className="p-4 border-b bg-indigo-600 text-white rounded-t-lg">
                 <h2 className="text-xl font-semibold">Data Analysis Chat</h2>
                 <p className="text-sm opacity-80">
-                    Try: "Show me a bar chart" or "Create a line graph"
+                    Try: "Show me a bar chart of name and interviews" or "Create a line graph"
                 </p>
             </div>
 
@@ -99,9 +135,9 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
                                 : 'bg-white border border-gray-200 rounded-bl-none'
                         }`}>
                             <p className="whitespace-pre-wrap">{msg.text}</p>
-                            {msg.chartConfig && data && (
+                            {msg.chartConfig && (
                                 <ChartMessage 
-                                    data={data} 
+                                    data={msg.chartData || data} 
                                     chartConfig={msg.chartConfig} 
                                 />
                             )}
@@ -123,7 +159,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
                         type="text"
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ask about your data or request a chart..."
+                        placeholder="Ask about your data or request a chart... (e.g., 'Show chart of name and interviews')"
                         className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         disabled={loading}
                     />
@@ -140,4 +176,4 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
     );
 };
 
-export default ChatInterface; 
+export default ChatInterface;
