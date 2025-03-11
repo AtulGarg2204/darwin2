@@ -76,40 +76,111 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
                                userInput.includes('show');
 
         try {
+            // Ensure we have valid data to send
+            const processedData = Array.isArray(data) ? data : [];
+            
+            // Log the current state of data and recordId
+            console.log('Current state:', {
+                recordId,
+                dataLength: processedData.length,
+                sampleData: processedData.slice(0, 2),
+                isChartRequest
+            });
+
+            const requestPayload = {
+                message: input,
+                recordId: recordId || null, // Ensure recordId is explicitly null if undefined
+                includeChartSuggestion: isChartRequest,
+                data: processedData
+            };
+
+            console.log('Sending request payload:', requestPayload);
+
             const res = await axios.post(
                 'http://localhost:5000/api/chat/analyze',
-                {
-                    message: input,
-                    recordId,
-                    includeChartSuggestion: isChartRequest,
-                    data // Pass the current data to the API
-                },
+                requestPayload,
                 { headers: { 'x-auth-token': token } }
             );
+
+            console.log('Received response:', res.data);
 
             const assistantMessage = {
                 text: res.data.answer,
                 sender: 'assistant'
             };
 
-            // If we have chart configuration and active cell, create the chart in the grid
-            if (res.data.chartConfig && activeCell && typeof onChartRequest === 'function') {
-                // Call the createChart function with the AI response
-                onChartRequest(res.data.chartConfig.type, activeCell, res.data.chartConfig);
-                assistantMessage.text += "\n\nI've created the chart at the selected cell.";
-            } 
-            // If we have chart config but no active cell, show it in the chat
-            else if (res.data.chartConfig) {
-                assistantMessage.chartConfig = res.data.chartConfig;
-                assistantMessage.chartData = res.data.data;
-                assistantMessage.text += "\n\nPlease select a cell in the grid where you'd like me to create this chart.";
+            if (res.data.chartConfig) {
+                console.log('Processing chart configuration...');
+                
+                // Create a properly structured chart config
+                const chartConfig = {
+                    type: res.data.chartConfig.type || 'bar',
+                    data: {
+                        labels: res.data.chartConfig.data?.labels || [],
+                        datasets: res.data.chartConfig.data?.datasets?.map(dataset => {
+                            // Ensure dataset has all required properties
+                            const processedData = Array.isArray(dataset.data) ? 
+                                dataset.data.map(val => !isNaN(val) ? Number(val) : 0) : [];
+                            
+                            return {
+                                label: dataset.label || 'Value',
+                                data: processedData,
+                                borderColor: dataset.borderColor || '#8884d8',
+                                fill: dataset.fill || false,
+                                tension: 0.4 // Add smooth line for line charts
+                            };
+                        }) || []
+                    },
+                    options: {
+                        ...res.data.chartConfig.options,
+                        responsive: true,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Row ID'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Value'
+                                }
+                            }
+                        }
+                    }
+                };
+                
+                console.log('Processed chart config:', {
+                    type: chartConfig.type,
+                    labelsCount: chartConfig.data.labels.length,
+                    datasetsCount: chartConfig.data.datasets.length,
+                    sampleDataset: chartConfig.data.datasets[0]
+                });
+
+                if (activeCell && typeof onChartRequest === 'function') {
+                    console.log('Creating chart in grid at cell:', activeCell);
+                    onChartRequest(chartConfig.type, activeCell, chartConfig);
+                    assistantMessage.text += "\n\nI've created the chart at the selected cell.";
+                } else {
+                    console.log('Showing chart in chat');
+                    assistantMessage.chartConfig = chartConfig;
+                    assistantMessage.chartData = processedData;
+                    assistantMessage.text += "\n\nPlease select a cell in the grid where you'd like me to create this chart.";
+                }
             }
 
             setMessages(prev => [...prev, assistantMessage]);
         } catch (err) {
             console.error('Chat error:', err);
+            console.error('Error details:', {
+                response: err.response?.data,
+                message: err.message,
+                status: err.response?.status
+            });
             setMessages(prev => [...prev, {
-                text: 'Sorry, I encountered an error processing your request.',
+                text: 'Sorry, I encountered an error processing your request. ' + 
+                      (err.response?.data?.error || err.message),
                 sender: 'assistant'
             }]);
         } finally {

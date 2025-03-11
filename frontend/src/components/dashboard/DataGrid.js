@@ -40,6 +40,11 @@ const DataGrid = forwardRef(({
     const [visibleCols, setVisibleCols] = useState(MIN_VISIBLE_COLS);
     const gridRef = useRef(null);
 
+    // Add selection state
+    const [selectionStart, setSelectionStart] = useState(null);
+    const [selectionEnd, setSelectionEnd] = useState(null);
+    const [isSelecting, setIsSelecting] = useState(false);
+
     // Initialize with minimum number of rows and columns
     useEffect(() => {
         // Initialize with empty data if not provided
@@ -376,43 +381,206 @@ const DataGrid = forwardRef(({
         expandGrid(0, 5); // Add 5 columns
     };
 
-    const handlePaste = (e) => {
-        e.preventDefault();
-        const pasteData = e.clipboardData.getData('text');
-        const rows = pasteData.split('\n').filter(row => row.trim() !== '');
+    // Handle mouse events for selection
+    const handleMouseDown = (rowIndex, colIndex, e) => {
+        console.log('Mouse down at:', rowIndex, colIndex);
+        setIsSelecting(true);
+        setSelectionStart({ row: rowIndex, col: colIndex });
+        setSelectionEnd({ row: rowIndex, col: colIndex });
+        onCellClick(rowIndex, colIndex);
+    };
+
+    const handleMouseMove = (rowIndex, colIndex) => {
+        if (isSelecting) {
+            console.log('Mouse move at:', rowIndex, colIndex);
+            setSelectionEnd({ row: rowIndex, col: colIndex });
+        }
+    };
+
+    const handleMouseUp = () => {
+        console.log('Mouse up, selection:', selectionStart, selectionEnd);
+        setIsSelecting(false);
+    };
+
+    // Function to check if a cell is within selection
+    const isCellSelected = (rowIndex, colIndex) => {
+        if (!selectionStart || !selectionEnd) return false;
         
-        if (rows.length > 0) {
-            const parsedData = rows.map(row => row.split('\t'));
+        const startRow = Math.min(selectionStart.row, selectionEnd.row);
+        const endRow = Math.max(selectionStart.row, selectionEnd.row);
+        const startCol = Math.min(selectionStart.col, selectionEnd.col);
+        const endCol = Math.max(selectionStart.col, selectionEnd.col);
+        
+        return rowIndex >= startRow && rowIndex <= endRow && 
+               colIndex >= startCol && colIndex <= endCol;
+    };
+
+    // Clipboard handlers
+    const handleCopy = (e) => {
+        e.preventDefault();
+        console.log('Copy event triggered');
+        
+        // If no selection, use active cell
+        const startRow = selectionStart ? Math.min(selectionStart.row, selectionEnd.row) : activeCell.row;
+        const endRow = selectionStart ? Math.max(selectionStart.row, selectionEnd.row) : activeCell.row;
+        const startCol = selectionStart ? Math.min(selectionStart.col, selectionEnd.col) : activeCell.col;
+        const endCol = selectionStart ? Math.max(selectionStart.col, selectionEnd.col) : activeCell.col;
+
+        console.log('Copying from:', { startRow, endRow, startCol, endCol });
+
+        const selectedData = [];
+        for (let i = startRow; i <= endRow; i++) {
+            const row = [];
+            for (let j = startCol; j <= endCol; j++) {
+                row.push(data[i]?.[j] || '');
+            }
+            selectedData.push(row.join('\t'));
+        }
+        const copyText = selectedData.join('\n');
+        console.log('Copying data:', copyText);
+        navigator.clipboard.writeText(copyText).catch(err => {
+            console.error('Failed to copy:', err);
+            // Fallback
+            e.clipboardData.setData('text/plain', copyText);
+        });
+    };
+
+    const handleCut = (e) => {
+        e.preventDefault();
+        console.log('Cut event triggered');
+        
+        handleCopy(e);
+        
+        // If no selection, use active cell
+        const startRow = selectionStart ? Math.min(selectionStart.row, selectionEnd.row) : activeCell.row;
+        const endRow = selectionStart ? Math.max(selectionStart.row, selectionEnd.row) : activeCell.row;
+        const startCol = selectionStart ? Math.min(selectionStart.col, selectionEnd.col) : activeCell.col;
+        const endCol = selectionStart ? Math.max(selectionStart.col, selectionEnd.col) : activeCell.col;
+
+        const newData = [...data];
+        for (let i = startRow; i <= endRow; i++) {
+            for (let j = startCol; j <= endCol; j++) {
+                if (newData[i]) {
+                    newData[i][j] = '';
+                }
+            }
+        }
+        setData(newData);
+    };
+
+    const handlePaste = async (e) => {
+        e.preventDefault();
+        console.log('Paste event triggered');
+        
+        let pasteData;
+        try {
+            // Try to get data from clipboard API first
+            if (e.clipboardData) {
+                pasteData = e.clipboardData.getData('text');
+            } else if (window.clipboardData) { // For IE
+                pasteData = window.clipboardData.getData('text');
+            } else {
+                // If no clipboard data available, try using navigator.clipboard
+                pasteData = await navigator.clipboard.readText();
+            }
             
-            // Get starting position from active cell
+            if (!pasteData) {
+                console.error('No data in clipboard');
+                return;
+            }
+        } catch (error) {
+            console.error('Failed to get clipboard data:', error);
+            // Try one last time with navigator.clipboard
+            try {
+                pasteData = await navigator.clipboard.readText();
+            } catch (err) {
+                console.error('All clipboard methods failed:', err);
+                return;
+            }
+        }
+
+        console.log('Raw paste data:', pasteData);
+        
+        // Split by newline and handle both \r\n and \n
+        const rows = pasteData.split(/[\r\n]+/).filter(row => row.trim() !== '');
+        console.log('Parsed rows:', rows);
+        
+        if (!activeCell || rows.length === 0) {
+            console.log('No active cell or no data to paste');
+            return;
+        }
+
             const startRow = activeCell.row;
             const startCol = activeCell.col;
             
-            // Create a copy of the current data
             const newData = [...data];
+        
+        // Process each row
+        rows.forEach((row, rowIndex) => {
+            // Split by tab or comma, handling quoted values correctly
+            const cells = row.split(/\t|,/).map(cell => cell.trim().replace(/^["']|["']$/g, ''));
+            console.log(`Processing row ${rowIndex}:`, cells);
             
-            // Update data with pasted content
-            parsedData.forEach((row, rowIndex) => {
-                if (startRow + rowIndex >= newData.length) {
-                    // Add new rows if needed
-                    expandGrid(parsedData.length - (newData.length - startRow), 0);
+            cells.forEach((cell, colIndex) => {
+                const targetRow = startRow + rowIndex;
+                const targetCol = startCol + colIndex;
+                
+                // Ensure we have enough rows
+                while (newData.length <= targetRow) {
+                    newData.push(Array(Math.max(newData[0]?.length || 0, targetCol + 1)).fill(''));
                 }
                 
-                row.forEach((cell, colIndex) => {
-                    if (startCol + colIndex >= headers.length) {
-                        // Add new columns if needed
-                        expandGrid(0, (startCol + colIndex + 1) - headers.length);
-                    }
-                    
-                    if (startRow + rowIndex < newData.length && startCol + colIndex < newData[0].length) {
-                        newData[startRow + rowIndex][startCol + colIndex] = cell;
-                    }
-                });
+                // Ensure we have enough columns in the target row
+                while (newData[targetRow].length <= targetCol) {
+                    newData[targetRow].push('');
+                }
+                
+                // Set the cell value
+                newData[targetRow][targetCol] = cell;
             });
-            
-            setData(newData);
-        }
+        });
+        
+        console.log('Updated data:', newData);
+        setData(newData);
     };
+
+    // Add event listeners for clipboard operations
+    useEffect(() => {
+        const handleKeyboardEvent = (e) => {
+            if (!activeCell) return;
+            
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key.toLowerCase()) {
+                    case 'c':
+                        e.preventDefault();
+                        handleCopy(e);
+                        break;
+                    case 'x':
+                        e.preventDefault();
+                        handleCut(e);
+                        break;
+                    case 'v':
+                        e.preventDefault();
+                        handlePaste(e);
+                        break;
+                }
+            }
+        };
+
+        const handleGlobalPaste = (e) => {
+            if (document.activeElement.closest('.DataGrid')) {
+                handlePaste(e);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyboardEvent);
+        window.addEventListener('paste', handleGlobalPaste);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyboardEvent);
+            window.removeEventListener('paste', handleGlobalPaste);
+        };
+    }, [data, activeCell, selectionStart, selectionEnd]);
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -807,6 +975,79 @@ const DataGrid = forwardRef(({
     const visibleRowStartIndex = 0; // Could be used for virtualized rendering
     const visibleRowCount = data.length;
 
+    // Modify the cell rendering to include selection and mouse events
+    const cellContent = (rowIndex, colIndex, row) => (
+        <td 
+            key={colIndex} 
+            onClick={() => onCellClick(rowIndex, colIndex)}
+            onMouseDown={(e) => handleMouseDown(rowIndex, colIndex, e)}
+            onMouseMove={() => handleMouseMove(rowIndex, colIndex)}
+            onMouseUp={handleMouseUp}
+            className={`
+                ${showGridLines ? 'border border-gray-200' : 'border-0'} 
+                relative
+                ${activeCell?.row === rowIndex && activeCell?.col === colIndex 
+                    ? 'bg-blue-50 outline outline-2 outline-blue-500' 
+                    : ''}
+                ${isCellSelected(rowIndex, colIndex) ? 'bg-blue-100' : ''}
+            `}
+            style={{ 
+                width: `${CELL_WIDTH}px`,
+                height: `${CELL_HEIGHT}px`,
+                minWidth: `${CELL_WIDTH}px`,
+                maxWidth: `${CELL_WIDTH}px`,
+                minHeight: `${CELL_HEIGHT}px`,
+                padding: '0 4px',
+                userSelect: 'none'
+            }}
+        >
+            {typeof row[colIndex] === 'string' && row[colIndex]?.startsWith('CHART:') ? (
+                row[colIndex].includes(':START') && (() => {
+                    const chartData = row[colIndex].split(':')[1];
+                    let type = chartData;
+                    let aiResponse = null;
+                    
+                    try {
+                        const parsedData = JSON.parse(chartData);
+                        type = parsedData.type;
+                        aiResponse = parsedData;
+                    } catch (e) {}
+                    
+                    return renderChart(type, { row: rowIndex, col: colIndex }, aiResponse);
+                })()
+            ) : (
+            <input
+                type="text"
+                    value={
+                        activeCell?.row === rowIndex && activeCell?.col === colIndex
+                            ? formulas[`${rowIndex}-${colIndex}`] || row[colIndex] || ''
+                            : formatCellValue(row[colIndex], rowIndex, colIndex)
+                    }
+                onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
+                    onBlur={() => {
+                        if (isEditing) {
+                            setIsEditing(false);
+                            const formula = formulas[`${rowIndex}-${colIndex}`];
+                            if (formula && formula.startsWith('=')) {
+                                const result = evaluateFormula(formula);
+                                const newData = [...data];
+                                newData[rowIndex][colIndex] = result;
+                                setData(newData);
+                            }
+                        }
+                    }}
+                    onFocus={() => setIsEditing(true)}
+                    style={{
+                        ...getCellStyle(rowIndex, colIndex),
+                        width: '100%',
+                        height: '100%'
+                    }}
+                    className="border-none focus:outline-none bg-transparent overflow-hidden text-ellipsis"
+                />
+            )}
+        </td>
+    );
+
     return (
         <div className="h-full flex flex-col relative">
             {/* Hidden file input */}
@@ -883,83 +1124,16 @@ const DataGrid = forwardRef(({
                                     {showHeaders && (
                                         <td 
                                             className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky left-0 z-10"
-                                            style={{ 
+                                        style={{ 
                                                 width: `${ROW_HEADER_WIDTH}px`,
                                                 height: `${CELL_HEIGHT}px`,
                                                 minHeight: `${CELL_HEIGHT}px`
-                                            }}
-                                        >
+                                        }}
+                                    >
                                             {rowIndex + 1}
-                                </td>
-                                    )}
-                                    {headers.map((_, colIndex) => (
-                                    <td 
-                                        key={colIndex} 
-                                            onClick={() => onCellClick(rowIndex, colIndex)}
-                                            className={`
-                                                ${showGridLines ? 'border border-gray-200' : 'border-0'} 
-                                                relative
-                                                ${activeCell?.row === rowIndex && 
-                                            activeCell?.col === colIndex 
-                                                    ? 'bg-blue-50 outline outline-2 outline-blue-500' 
-                                                    : ''}
-                                            `}
-                                        style={{ 
-                                                width: `${CELL_WIDTH}px`,
-                                                height: `${CELL_HEIGHT}px`,
-                                                minWidth: `${CELL_WIDTH}px`,
-                                                maxWidth: `${CELL_WIDTH}px`,
-                                                minHeight: `${CELL_HEIGHT}px`,
-                                                padding: '0 4px'
-                                            }}
-                                        >
-                                            {row[colIndex]?.startsWith('CHART:') ? (
-                                                row[colIndex].includes(':START') && (() => {
-                                                    const chartData = row[colIndex].split(':')[1];
-                                                    let type = chartData;
-                                                    let aiResponse = null;
-                                                    
-                                                    try {
-                                                        const parsedData = JSON.parse(chartData);
-                                                        type = parsedData.type;
-                                                        aiResponse = parsedData;
-                                                    } catch (e) {}
-                                                    
-                                                    return renderChart(type, { row: rowIndex, col: colIndex }, aiResponse);
-                                                })()
-                                            ) : (
-                                                <input
-                                                    type="text"
-                                                    value={
-                                                        activeCell?.row === rowIndex && activeCell?.col === colIndex
-                                                            ? formulas[`${rowIndex}-${colIndex}`] || row[colIndex] || ''
-                                                            : formatCellValue(row[colIndex], rowIndex, colIndex)
-                                                    }
-                                                    onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
-                                                    onBlur={() => {
-                                                        if (isEditing) {
-                                                            setIsEditing(false);
-                                                            const formula = formulas[`${rowIndex}-${colIndex}`];
-                                                            if (formula && formula.startsWith('=')) {
-                                                                const result = evaluateFormula(formula);
-                                                                const newData = [...data];
-                                                                newData[rowIndex][colIndex] = result;
-                                                                setData(newData);
-                                                            }
-                                                        }
-                                                    }}
-                                                    onFocus={() => setIsEditing(true)}
-                                                    style={{
-                                                        ...getCellStyle(rowIndex, colIndex),
-                                                        width: '100%',
-                                                        height: '100%'
-                                                    }}
-                                                    className="border-none focus:outline-none bg-transparent overflow-hidden text-ellipsis"
-                                                    onPaste={handlePaste}
-                                                />
-                                            )}
                                     </td>
-                                ))}
+                                    )}
+                                    {headers.map((_, colIndex) => cellContent(rowIndex, colIndex, row))}
                             </tr>
                         ))}
                     </tbody>

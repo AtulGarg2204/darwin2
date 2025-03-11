@@ -32,11 +32,8 @@ function App() {
   };
 
   const handleNewFile = () => {
-    const newData = [
-      ['', '', '', ''],
-      ['', '', '', ''],
-      ['', '', '', '']
-    ];
+    // Create a new grid with MIN_VISIBLE_ROWS rows and MIN_VISIBLE_COLS columns
+    const newData = Array(50).fill().map(() => Array(10).fill(''));
     handleDataChange(newData);
   };
 

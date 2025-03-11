@@ -49,34 +49,12 @@ const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHist
         const file = e.target.files[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                if (file.name.endsWith('.csv')) {
-                    // Parse CSV
-                    const text = event.target.result;
-                    const rows = text.split('\n').map(row => row.split(','));
-                    onDataLoad(rows);
-                } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                    // Parse Excel
-                    const data = event.target.result;
-                    const workbook = XLSX.read(data, { type: 'binary' });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                    onDataLoad(jsonData);
-                }
-            } catch (error) {
-                console.error('Error reading file:', error);
-                alert('Error reading file. Please make sure it\'s a valid CSV or Excel file.');
-            }
-        };
-
-        if (file.name.endsWith('.csv')) {
-            reader.readAsText(file);
-        } else {
-            reader.readAsBinaryString(file);
-        }
+        // Pass the file directly to onDataLoad, just like in InsertMenu
+        onDataLoad(file);
+        setShowFileMenu(false);
+        
+        // Clear the input value to allow selecting the same file again
+        e.target.value = '';
     };
 
     const handleSave = () => {

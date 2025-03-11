@@ -17,7 +17,6 @@ const Dashboard = forwardRef(({
     const [savedRecordId, setSavedRecordId] = useState(null);
     const dataGridRef = useRef();
     const {undo, redo,} = useSpreadsheetHistory(currentData);
-    console.log(savedRecordId);
     // Add state for cell formatting
     const [cellFormats, setCellFormats] = useState({});
 

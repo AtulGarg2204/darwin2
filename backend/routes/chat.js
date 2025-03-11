@@ -110,10 +110,59 @@ You are a data visualization expert. Your task is to:
     try {
       const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
       if (jsonMatch) {
-        chartConfig = JSON.parse(jsonMatch[1]);
+        // Replace single quotes with double quotes and handle escaped quotes
+        let jsonStr = jsonMatch[1]
+          .replace(/'/g, '"')  // Replace all single quotes with double quotes
+          .replace(/\s+/g, ' ') // Normalize whitespace
+          .trim();
+
+        // Additional safety check for common JSON issues
+        jsonStr = jsonStr
+          .replace(/([{,]\s*)(\w+):/g, '$1"$2":') // Ensure property names are quoted
+          .replace(/:\s*"([^"]+)"\s*([,}])/g, ':"$1"$2'); // Ensure string values are properly quoted
+
+        console.log('Attempting to parse JSON:', jsonStr);
+        chartConfig = JSON.parse(jsonStr);
+        
+        // Validate required chart properties
+        if (!chartConfig.type || !chartConfig.data) {
+          console.error('Invalid chart config structure:', chartConfig);
+          chartConfig = null;
+        }
       }
     } catch (error) {
       console.error('Error parsing chart config:', error);
+      // Attempt to create a basic chart config from the data
+      try {
+        // Find numeric columns for potential chart data
+        const headers = Object.keys(analysisData[0] || {});
+        const numericColumns = headers.filter(header => 
+          analysisData.some(row => !isNaN(parseFloat(row[header])))
+        );
+        
+        if (numericColumns.length > 0) {
+          chartConfig = {
+            type: "bar",
+            data: {
+              labels: analysisData.slice(0, 10).map(row => row[headers[0]] || ''),
+              datasets: [{
+                label: numericColumns[0],
+                data: analysisData.slice(0, 10).map(row => parseFloat(row[numericColumns[0]]) || 0),
+                borderColor: "#8884d8",
+                fill: false
+              }]
+            },
+            options: {
+              scales: {
+                x: { title: { display: true, text: headers[0] } },
+                y: { title: { display: true, text: numericColumns[0] } }
+              }
+            }
+          };
+        }
+      } catch (fallbackError) {
+        console.error('Error creating fallback chart config:', fallbackError);
+      }
     }
     
     res.json({ 
