@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import EditMenu from '../menus/EditMenu';
@@ -8,7 +7,7 @@ import InsertMenu from '../menus/InsertMenu';
 import FormatMenu from '../menus/FormatMenu';
 
 const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad, showHeaders, setShowHeaders, showGridLines, setShowGridLines, zoomLevel, setZoomLevel, onFormatChange }) => {
-    const { user } = useAuth();
+    
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileInputRef = useRef(null);
 

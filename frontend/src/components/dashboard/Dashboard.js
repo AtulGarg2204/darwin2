@@ -1,6 +1,6 @@
 import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 
-import DataGrid from './DataGrid';
+import DataGrid from '../dashboard/DataGrid';
 import ChatInterface from '../chat/ChatInterface';
 import Toolbar from './Toolbar';
 import useSpreadsheetHistory from '../../hooks/useSpreadsheetHistory';
@@ -14,7 +14,6 @@ const Dashboard = forwardRef(({
     showGridLines,
     zoomLevel
 }, ref) => {
-    const [savedRecordId, setSavedRecordId] = useState(null);
     const dataGridRef = useRef();
     const {undo, redo,} = useSpreadsheetHistory(currentData);
     // Add state for cell formatting
@@ -86,6 +85,9 @@ const Dashboard = forwardRef(({
             case 'align':
                 newFormat.align = value;
                 break;
+            default:
+                // Keep existing format for unhandled types
+                return;
         }
 
         setCellFormats({
@@ -132,7 +134,9 @@ const Dashboard = forwardRef(({
                 case 'clear':
                     delete newFormats[cellKey];
                     break;
-                // Add other cases as needed
+                default:
+                    // Keep existing format for unhandled types
+                    return;
             }
             
             setCellFormats(newFormats);
@@ -180,9 +184,6 @@ const Dashboard = forwardRef(({
                         ref={dataGridRef}
                         data={currentData}
                         setData={setCurrentData}
-                        onDataSaved={(data, recordId) => {
-                            setSavedRecordId(recordId);
-                        }}
                         activeCell={activeCell}
                         onCellClick={handleCellClick}
                         showHeaders={showHeaders}

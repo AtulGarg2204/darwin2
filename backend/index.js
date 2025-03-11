@@ -10,7 +10,10 @@ connectDB();
 
 // Middleware
 app.use(cors());
-app.use(express.json({ extended: false }));
+
+// Configure Express to handle large payloads
+app.use(express.json({ limit: '50mb', extended: true }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));

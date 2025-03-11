@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const EditMenu = ({ 
     activeCell, 
@@ -12,7 +12,7 @@ const EditMenu = ({
     const [showEditMenu, setShowEditMenu] = useState(false);
     const [clipboard, setClipboard] = useState(null);
 
-    const handleCut = () => {
+    const handleCut = useCallback(() => {
         if (!activeCell) return;
         
         // Store the current cell value in clipboard
@@ -23,29 +23,29 @@ const EditMenu = ({
         const newData = [...currentData];
         newData[activeCell.row][activeCell.col] = '';
         setCurrentData(newData);
-    };
+    }, [activeCell, currentData, setCurrentData]);
 
-    const handleCopy = () => {
+    const handleCopy = useCallback(() => {
         if (!activeCell) return;
         const value = currentData[activeCell.row][activeCell.col];
         setClipboard(value);
-    };
+    }, [activeCell, currentData]);
 
-    const handlePaste = () => {
+    const handlePaste = useCallback(() => {
         if (!activeCell || clipboard === null) return;
         
         const newData = [...currentData];
         newData[activeCell.row][activeCell.col] = clipboard;
         setCurrentData(newData);
-    };
+    }, [activeCell, clipboard, currentData, setCurrentData]);
 
-    const handlePasteValuesOnly = () => {
+    const handlePasteValuesOnly = useCallback(() => {
         if (!activeCell || clipboard === null) return;
         // For now, this works the same as regular paste since we don't have formatting
         handlePaste();
-    };
+    }, [activeCell, clipboard, handlePaste]);
 
-    const handleGoTo = () => {
+    const handleGoTo = useCallback(() => {
         const cellRef = prompt('Enter cell reference (e.g., A1):');
         if (!cellRef) return;
 
@@ -58,15 +58,15 @@ const EditMenu = ({
 
         // TODO: Implement scrolling to the cell and selecting it
         console.log(`Go to cell: row ${row}, col ${colIndex}`);
-    };
+    }, []);
 
-    const handleFind = () => {
+    const handleFind = useCallback(() => {
         const searchTerm = prompt('Enter search term:');
         if (!searchTerm) return;
 
         // TODO: Implement find functionality
         console.log(`Searching for: ${searchTerm}`);
-    };
+    }, []);
 
     const menuItems = [
         { 
@@ -181,7 +181,20 @@ const EditMenu = ({
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activeCell, currentData, clipboard, canUndo, canRedo, undoHistory, redoHistory]);
+    }, [
+        activeCell,
+        currentData,
+        clipboard,
+        canUndo,
+        canRedo,
+        undoHistory,
+        redoHistory,
+        handleCut,
+        handleCopy,
+        handlePaste,
+        handleGoTo,
+        handleFind
+    ]);
 
     return (
         <div className="relative">

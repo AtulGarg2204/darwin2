@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import * as XLSX from 'xlsx';
 import { 
-  LineChart, Line, BarChart, Bar, PieChart, Pie, AreaChart, Area,
+  LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from 'recharts';
 import excelFunctions from "../../utils/ExcelFunctions";
@@ -39,12 +39,12 @@ const DataGrid = forwardRef(({
     const [visibleRows, setVisibleRows] = useState(MIN_VISIBLE_ROWS);
     const [visibleCols, setVisibleCols] = useState(MIN_VISIBLE_COLS);
     const gridRef = useRef(null);
-
+   console.log(visibleRows);
     // Add selection state
     const [selectionStart, setSelectionStart] = useState(null);
     const [selectionEnd, setSelectionEnd] = useState(null);
     const [isSelecting, setIsSelecting] = useState(false);
-
+    console.log(chartConfig);
     // Initialize with minimum number of rows and columns
     useEffect(() => {
         // Initialize with empty data if not provided
@@ -69,7 +69,7 @@ const DataGrid = forwardRef(({
             
             setData(newData);
         }
-    }, []);
+    }, [data, setData]);
 
     // Function to handle scrolling near edges to expand grid
     const handleScroll = () => {
@@ -90,7 +90,21 @@ const DataGrid = forwardRef(({
     };
     
     // Function to expand the grid
-    const expandGrid = (addRows, addCols) => {
+  
+    
+    // Function to generate column headers beyond Z (AA, AB, etc.)
+    const generateColumnLabel = useCallback((index) => {
+        let label = '';
+        let i = index;
+        
+        do {
+            label = String.fromCharCode(65 + (i % 26)) + label;
+            i = Math.floor(i / 26) - 1;
+        } while (i >= 0);
+        
+        return label;
+    }, []);
+    const expandGrid = useCallback((addRows, addCols) => {
         if (addRows > 0) {
             const currentRowCount = data.length;
             const newData = [...data];
@@ -120,38 +134,21 @@ const DataGrid = forwardRef(({
             setData(newData);
             setVisibleCols(currentColCount + addCols);
         }
-    };
-    
-    // Function to generate column headers beyond Z (AA, AB, etc.)
-    const generateColumnLabel = (index) => {
-        let label = '';
-        let i = index;
-        
-        do {
-            label = String.fromCharCode(65 + (i % 26)) + label;
-            i = Math.floor(i / 26) - 1;
-        } while (i >= 0);
-        
-        return label;
-    };
-
-    // Generate row numbers
-    const rowNumbers = Array.from({ length: data.length }, (_, i) => i + 1);
-
+    }, [data,setData, generateColumnLabel,headers]);
     // Update headers when data changes
     useEffect(() => {
         if (data && data[0]) {
             const colCount = Math.max(...data.map(row => row.length));
             if (colCount > headers.length) {
                 const newHeaders = Array.from({ length: colCount }, (_, i) => generateColumnLabel(i));
-            setHeaders(newHeaders);
+                setHeaders(newHeaders);
                 setVisibleCols(colCount);
             }
         }
-    }, [data]);
+    }, [data, headers.length, generateColumnLabel]);
 
     // Function to get range of cells (e.g., A1:A2)
-    const getCellRange = (start, end) => {
+    const getCellRange = useCallback((start, end) => {
         try {
             const startCol = start.match(/[A-Z]+/)[0];
             const startRow = parseInt(start.match(/[0-9]+/)[0]) - 1;
@@ -176,10 +173,10 @@ const DataGrid = forwardRef(({
         } catch (error) {
             return [];
         }
-    };
+    }, [data]);
 
     // Function to get cell value from a reference like 'A1'
-    const getCellValue = (cellRef) => {
+    const getCellValue = useCallback((cellRef) => {
         try {
             const col = cellRef.match(/[A-Z]+/)[0];
             const row = parseInt(cellRef.match(/[0-9]+/)[0]) - 1;
@@ -191,24 +188,103 @@ const DataGrid = forwardRef(({
         } catch (error) {
             return 0;
         }
-    };
+    }, [data]);
    
-    // Function to evaluate formula
-    const evaluateFormula = (formula) => {
+    // Helper function to apply operators
+    const applyOperator = useCallback((a, b, operator) => {
+        switch (operator) {
+            case '+': return a + b;
+            case '-': return a - b;
+            case '*': return a * b;
+            case '/': return b !== 0 ? a / b : NaN;
+            default: return NaN;
+        }
+    }, []);
+
+    // Add this helper function for safe mathematical expression evaluation
+    const evaluateMathExpression = useCallback((expression) => {
+        try {
+            // Remove all spaces and convert to lowercase
+            expression = expression.replace(/\s+/g, '').toLowerCase();
+            
+            // Split the expression into tokens
+            const tokens = expression.match(/(\d*\.?\d+|[+\-*/()])/g) || [];
+            
+            // Stack for numbers and operators
+            const numbers = [];
+            const operators = [];
+            
+            // Operator precedence
+            const precedence = {
+                '+': 1,
+                '-': 1,
+                '*': 2,
+                '/': 2
+            };
+            
+            // Process each token
+            for (let i = 0; i < tokens.length; i++) {
+                const token = tokens[i];
+                
+                if (!isNaN(token) || token.includes('.')) {
+                    // If it's a number, push to numbers stack
+                    numbers.push(parseFloat(token));
+                } else if (token === '(') {
+                    // If it's an opening parenthesis, push to operators stack
+                    operators.push(token);
+                } else if (token === ')') {
+                    // If it's a closing parenthesis, process until we find matching opening parenthesis
+                    while (operators.length > 0 && operators[operators.length - 1] !== '(') {
+                        const operator = operators.pop();
+                        const b = numbers.pop();
+                        const a = numbers.pop();
+                        numbers.push(applyOperator(a, b, operator));
+                    }
+                    operators.pop(); // Remove the opening parenthesis
+                } else if (['+', '-', '*', '/'].includes(token)) {
+                    // If it's an operator, process higher precedence operators first
+                    while (operators.length > 0 && 
+                           operators[operators.length - 1] !== '(' && 
+                           precedence[operators[operators.length - 1]] >= precedence[token]) {
+                        const operator = operators.pop();
+                        const b = numbers.pop();
+                        const a = numbers.pop();
+                        numbers.push(applyOperator(a, b, operator));
+                    }
+                    operators.push(token);
+                }
+            }
+            
+            // Process remaining operators
+            while (operators.length > 0) {
+                const operator = operators.pop();
+                const b = numbers.pop();
+                const a = numbers.pop();
+                numbers.push(applyOperator(a, b, operator));
+            }
+            
+            return numbers[0];
+        } catch (error) {
+            console.error('Math expression evaluation error:', error);
+            return NaN;
+        }
+    }, [applyOperator]);
+
+    const evaluateFormula = useCallback((formula) => {
         if (!formula.startsWith('=')) return formula;
 
         try {
             // Check for Excel functions
             const functionMatch = formula.match(/^=([A-Z]+)\((.*)\)$/);
             if (functionMatch) {
-                const [_, functionName, params] = functionMatch;
+                const [functionName, params] = functionMatch;
                 const fn = excelFunctions[functionName];
                 if (!fn) return '#NAME?';
 
                 // Check for range notation (e.g., A1:A2)
                 const rangeMatch = params.match(/([A-Z]+[0-9]+):([A-Z]+[0-9]+)/);
                 if (rangeMatch) {
-                    const [_, start, end] = rangeMatch;
+                    const [start, end] = rangeMatch;
                     const values = getCellRange(start, end);
                     return fn(values).toString();
                 }
@@ -227,26 +303,15 @@ const DataGrid = forwardRef(({
                 return getCellValue(cellRef);
             });
             
-            // Add parentheses around the expression for safer evaluation
-            const result = eval(`(${expression})`);
+            // Evaluate the expression safely
+            const result = evaluateMathExpression(expression);
             return isNaN(result) ? '#ERROR!' : result.toString();
         } catch (error) {
             console.error('Formula evaluation error:', error);
             return '#ERROR!';
         }
-    };
+    }, [getCellRange, getCellValue, evaluateMathExpression]);
 
-    // Function to get cell display value
-    const getCellDisplayValue = (rowIndex, colIndex) => {
-        const cellKey = `${rowIndex}-${colIndex}`;
-        const formula = formulas[cellKey];
-        if (formula) {
-            return evaluateFormula(formula);
-        }
-        return data[rowIndex]?.[colIndex] || '';
-    };
-
-    // Modified handleCellChange
     const handleCellChange = (rowIndex, colIndex, value) => {
         const newData = [...data];
         if (!newData[rowIndex]) {
@@ -309,7 +374,7 @@ const DataGrid = forwardRef(({
         if (hasChanges) {
             setData(newData);
         }
-    }, [data, formulas]);
+    }, [data, formulas,setData,evaluateFormula]);
 
     // Add keyboard navigation with expansion capability
     useEffect(() => {
@@ -361,6 +426,9 @@ const DataGrid = forwardRef(({
                         }
                         e.preventDefault();
                         break;
+                    default:
+                        // Let other keys be handled by the browser
+                        return;
                 }
 
                 if (newRow !== row || newCol !== col) {
@@ -371,15 +439,9 @@ const DataGrid = forwardRef(({
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activeCell, data, headers.length]);
+    }, [activeCell, data, headers.length,expandGrid, onCellClick]);
 
-    const handleAddRow = () => {
-        expandGrid(10, 0); // Add 10 rows
-    };
 
-    const handleAddColumn = () => {
-        expandGrid(0, 5); // Add 5 columns
-    };
 
     // Handle mouse events for selection
     const handleMouseDown = (rowIndex, colIndex, e) => {
@@ -415,8 +477,8 @@ const DataGrid = forwardRef(({
                colIndex >= startCol && colIndex <= endCol;
     };
 
-    // Clipboard handlers
-    const handleCopy = (e) => {
+    // Create stable callback functions for clipboard operations
+    const handleCopyCallback = useCallback((e) => {
         e.preventDefault();
         console.log('Copy event triggered');
         
@@ -443,13 +505,13 @@ const DataGrid = forwardRef(({
             // Fallback
             e.clipboardData.setData('text/plain', copyText);
         });
-    };
+    }, [data, selectionStart, selectionEnd, activeCell]);
 
-    const handleCut = (e) => {
+    const handleCutCallback = useCallback((e) => {
         e.preventDefault();
         console.log('Cut event triggered');
         
-        handleCopy(e);
+        handleCopyCallback(e);
         
         // If no selection, use active cell
         const startRow = selectionStart ? Math.min(selectionStart.row, selectionEnd.row) : activeCell.row;
@@ -466,12 +528,17 @@ const DataGrid = forwardRef(({
             }
         }
         setData(newData);
-    };
+    }, [data, selectionStart, selectionEnd, activeCell, handleCopyCallback, setData]);
 
-    const handlePaste = async (e) => {
+    const handlePasteCallback = useCallback(async (e) => {
         e.preventDefault();
         console.log('Paste event triggered');
         
+        if (!activeCell) {
+            console.log('No active cell for paste');
+            return;
+        }
+
         let pasteData;
         try {
             // Try to get data from clipboard API first
@@ -504,17 +571,12 @@ const DataGrid = forwardRef(({
         // Split by newline and handle both \r\n and \n
         const rows = pasteData.split(/[\r\n]+/).filter(row => row.trim() !== '');
         console.log('Parsed rows:', rows);
-        
-        if (!activeCell || rows.length === 0) {
-            console.log('No active cell or no data to paste');
-            return;
-        }
 
-            const startRow = activeCell.row;
-            const startCol = activeCell.col;
-            
-            const newData = [...data];
+        const startRow = activeCell.row;
+        const startCol = activeCell.col;
         
+        const newData = [...data];
+    
         // Process each row
         rows.forEach((row, rowIndex) => {
             // Split by tab or comma, handling quoted values correctly
@@ -542,9 +604,9 @@ const DataGrid = forwardRef(({
         
         console.log('Updated data:', newData);
         setData(newData);
-    };
+    }, [data, activeCell, setData]);
 
-    // Add event listeners for clipboard operations
+    // Update useEffect to use the new callback functions
     useEffect(() => {
         const handleKeyboardEvent = (e) => {
             if (!activeCell) return;
@@ -552,16 +614,15 @@ const DataGrid = forwardRef(({
             if (e.ctrlKey || e.metaKey) {
                 switch (e.key.toLowerCase()) {
                     case 'c':
-                        e.preventDefault();
-                        handleCopy(e);
+                        handleCopyCallback(e);
                         break;
                     case 'x':
-                        e.preventDefault();
-                        handleCut(e);
+                        handleCutCallback(e);
                         break;
                     case 'v':
-                        e.preventDefault();
-                        handlePaste(e);
+                        handlePasteCallback(e);
+                        break;
+                    default:
                         break;
                 }
             }
@@ -569,7 +630,7 @@ const DataGrid = forwardRef(({
 
         const handleGlobalPaste = (e) => {
             if (document.activeElement.closest('.DataGrid')) {
-                handlePaste(e);
+                handlePasteCallback(e);
             }
         };
 
@@ -580,7 +641,7 @@ const DataGrid = forwardRef(({
             window.removeEventListener('keydown', handleKeyboardEvent);
             window.removeEventListener('paste', handleGlobalPaste);
         };
-    }, [data, activeCell, selectionStart, selectionEnd]);
+    }, [activeCell, handleCopyCallback, handleCutCallback, handlePasteCallback]);
 
     const handleFileUpload = (e) => {
         const file = e.target.files[0];
@@ -690,7 +751,7 @@ const DataGrid = forwardRef(({
                 return rowData;
             });
             
-            const response = await axios.post('http://localhost:5000/api/records', {
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/records`, {
                 data: formattedData,
                 fileName: fileName || 'Untitled Data'
             }, {
@@ -698,7 +759,7 @@ const DataGrid = forwardRef(({
                     'x-auth-token': token
                 }
             });
-            
+            console.log(response);
             alert('Data saved successfully!');
         } catch (err) {
             console.error(err);
@@ -709,58 +770,82 @@ const DataGrid = forwardRef(({
     // Function to prepare chart data from OpenAI format
     const prepareChartData = (aiResponse = null) => {
         if (aiResponse) {
-            // If we have AI-generated data, use it
-            return aiResponse.data.labels.map((label, index) => {
-                const dataPoint = {
-                    name: label
-                };
-                // Add all dataset values
-                aiResponse.data.datasets.forEach(dataset => {
-                    dataPoint[dataset.label] = dataset.data[index];
+            console.log('Preparing chart data from AI response:', aiResponse);
+            
+            // If we have AI-generated data, use it directly
+            if (aiResponse.data?.labels && aiResponse.data?.datasets) {
+                const chartData = aiResponse.data.labels.map((label, index) => {
+                    const dataPoint = { name: label };
+                    // Add all dataset values
+                    aiResponse.data.datasets.forEach(dataset => {
+                        if (dataset.data && dataset.data[index] !== undefined) {
+                            dataPoint[dataset.label || 'Value'] = dataset.data[index];
+                        }
+                    });
+                    return dataPoint;
                 });
-                return dataPoint;
-            });
+                
+                console.log('Prepared chart data:', chartData);
+                return chartData;
+            }
         }
         
         // Fallback to grid data format
-        if (!data || data.length < 2) return [];
+        if (!data || data.length < 2) {
+            console.log('No data available for chart');
+            return [];
+        }
         
         // Get the data rows (skip empty rows)
         const rows = data.filter(row => row && row.some(cell => cell !== ''));
-        if (rows.length < 2) return []; // Need at least headers and one data row
+        if (rows.length < 2) {
+            console.log('Not enough data rows for chart');
+            return [];
+        }
 
         // Get the header row (first row)
         const headerRow = rows[0];
-        const nameIndex = headerRow.findIndex(header => header?.toLowerCase().includes('nam'));
-        const orderIndex = headerRow.findIndex(header => header?.toLowerCase().includes('ord'));
-        const ageIndex = headerRow.findIndex(header => header?.toLowerCase().includes('age'));
+        
+        // Find numeric columns
+        const numericColumns = [];
+        for (let i = 0; i < headerRow.length; i++) {
+            // Check if this column has any numeric values
+            const hasNumericValues = rows.slice(1).some(row => {
+                const value = row[i];
+                return value !== '' && !isNaN(parseFloat(value));
+            });
+            if (hasNumericValues) {
+                numericColumns.push(i);
+            }
+        }
+
+        console.log('Found numeric columns:', numericColumns);
 
         // Transform data rows into chart format
-        return rows.slice(1) // Skip header row
+        const chartData = rows.slice(1) // Skip header row
             .map(row => {
                 if (!row || row.length === 0) return null;
 
                 const dataPoint = {
-                    name: row[nameIndex] || 'Unnamed'
+                    name: row[0] || 'Unnamed' // Use first column as name
                 };
 
-                if (orderIndex !== -1) {
-                    const orderValue = parseFloat(row[orderIndex]);
-                    if (!isNaN(orderValue)) {
-                        dataPoint['ord'] = orderValue;
+                // Add all numeric columns to the data point
+                numericColumns.forEach(colIndex => {
+                    if (colIndex !== 0) { // Skip the name column
+                        const value = parseFloat(row[colIndex]);
+                        if (!isNaN(value)) {
+                            dataPoint[headerRow[colIndex] || `Column ${colIndex}`] = value;
+                        }
                     }
-                }
-
-                if (ageIndex !== -1) {
-                    const ageValue = parseFloat(row[ageIndex]);
-                    if (!isNaN(ageValue)) {
-                        dataPoint['age'] = ageValue;
-                    }
-                }
+                });
 
                 return dataPoint;
             })
-            .filter(point => point && (point.ord !== undefined || point.age !== undefined)); // Only keep points with data
+            .filter(point => point !== null && Object.keys(point).length > 1); // Must have at least name and one value
+
+        console.log('Generated chart data:', chartData);
+        return chartData;
     };
     
     // Function to create chart
@@ -780,7 +865,7 @@ const DataGrid = forwardRef(({
                     newData[startCell.row + i] = [];
                 }
                 if (i === 0 && j === 0) {
-                    // Store AI response data in the cell if available
+                    // Store chart configuration in the cell
                     const chartData = aiResponse ? JSON.stringify(aiResponse) : type;
                     newData[startCell.row][startCell.col] = `CHART:${chartData}:START`;
                 } else {
@@ -970,12 +1055,6 @@ const DataGrid = forwardRef(({
             textAlign: format.align || 'left'
         };
     };
-
-    // Create row and column virtualization variables
-    const visibleRowStartIndex = 0; // Could be used for virtualized rendering
-    const visibleRowCount = data.length;
-
-    // Modify the cell rendering to include selection and mouse events
     const cellContent = (rowIndex, colIndex, row) => (
         <td 
             key={colIndex} 

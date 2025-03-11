@@ -8,56 +8,6 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const { token } = useAuth();
-   
-    const parseChartConfig = (text) => {
-        try {
-            const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
-            if (jsonMatch) {
-                return JSON.parse(jsonMatch[1]);
-            }
-            return null;
-        } catch (error) {
-            console.error('Error parsing chart config:', error);
-            return null;
-        }
-    };
-
-    // Helper function to extract column names from user message
-    const extractColumns = (userInput, availableColumns) => {
-        const words = userInput.toLowerCase().split(/\s+/);
-        const mentionedColumns = [];
-        
-        // First pass: look for exact column matches
-        for (const col of availableColumns) {
-            const colLower = col.toLowerCase();
-            if (words.includes(colLower)) {
-                mentionedColumns.push(col);
-            }
-        }
-        
-        // If we couldn't find exact matches, look for partial matches
-        if (mentionedColumns.length < 2) {
-            for (const col of availableColumns) {
-                const colLower = col.toLowerCase();
-                if (!mentionedColumns.includes(col) && 
-                    words.some(word => word.includes(colLower) || colLower.includes(word))) {
-                    mentionedColumns.push(col);
-                }
-                
-                if (mentionedColumns.length >= 2) break;
-            }
-        }
-        
-        // Return default if we still don't have enough
-        if (mentionedColumns.length < 2 && availableColumns.length >= 2) {
-            return { x: availableColumns[0], y: availableColumns[1] };
-        }
-        
-        return { 
-            x: mentionedColumns[0] || availableColumns[0] || 'name', 
-            y: mentionedColumns[1] || availableColumns[1] || 'value' 
-        };
-    };
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
@@ -89,7 +39,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
 
             const requestPayload = {
                 message: input,
-                recordId: recordId || null, // Ensure recordId is explicitly null if undefined
+                recordId: recordId || null,
                 includeChartSuggestion: isChartRequest,
                 data: processedData
             };
@@ -97,17 +47,22 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
             console.log('Sending request payload:', requestPayload);
 
             const res = await axios.post(
-                'http://localhost:5000/api/chat/analyze',
+                `${process.env.REACT_APP_API_URL}/api/chat/analyze`,
                 requestPayload,
                 { headers: { 'x-auth-token': token } }
             );
 
             console.log('Received response:', res.data);
 
-            const assistantMessage = {
+            let assistantMessage = {
                 text: res.data.answer,
                 sender: 'assistant'
             };
+
+            // Add a note if the data was sampled
+            if (res.data.data.length < processedData.length) {
+                assistantMessage.text = `Note: Analysis is based on a sample of ${res.data.data.length} rows from the total ${processedData.length} rows.\n\n${assistantMessage.text}`;
+            }
 
             if (res.data.chartConfig) {
                 console.log('Processing chart configuration...');
@@ -127,7 +82,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
                                 data: processedData,
                                 borderColor: dataset.borderColor || '#8884d8',
                                 fill: dataset.fill || false,
-                                tension: 0.4 // Add smooth line for line charts
+                                tension: 0.4
                             };
                         }) || []
                     },
@@ -162,10 +117,13 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest }) => {
                     console.log('Creating chart in grid at cell:', activeCell);
                     onChartRequest(chartConfig.type, activeCell, chartConfig);
                     assistantMessage.text += "\n\nI've created the chart at the selected cell.";
+                    if (res.data.data.length < processedData.length) {
+                        assistantMessage.text += "\nNote: The chart is based on sampled data for better visualization.";
+                    }
                 } else {
                     console.log('Showing chart in chat');
                     assistantMessage.chartConfig = chartConfig;
-                    assistantMessage.chartData = processedData;
+                    assistantMessage.chartData = res.data.data; // Use the sampled data
                     assistantMessage.text += "\n\nPlease select a cell in the grid where you'd like me to create this chart.";
                 }
             }

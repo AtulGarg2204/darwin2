@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const ViewMenu = ({ 
     showHeaders, 
@@ -10,22 +10,22 @@ const ViewMenu = ({
 }) => {
     const [showViewMenu, setShowViewMenu] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
-
+   console.log(isFullScreen);
     // Handle zoom controls
-    const handleZoomIn = () => {
+    const handleZoomIn = useCallback(() => {
         setZoomLevel(prev => Math.min(prev + 25, 200));
-    };
+    }, [setZoomLevel]);
 
-    const handleZoomOut = () => {
+    const handleZoomOut = useCallback(() => {
         setZoomLevel(prev => Math.max(prev - 25, 25));
-    };
+    }, [setZoomLevel]);
 
-    const handleZoomLevel = (level) => {
+    const handleZoomLevel = useCallback((level) => {
         setZoomLevel(level);
-    };
+    }, [setZoomLevel]);
 
     // Handle presentation mode
-    const handlePresentationMode = () => {
+    const handlePresentationMode = useCallback(() => {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen();
             setIsFullScreen(true);
@@ -33,7 +33,7 @@ const ViewMenu = ({
             document.exitFullscreen();
             setIsFullScreen(false);
         }
-    };
+    }, []);
 
     // Keyboard shortcuts for zoom
     useEffect(() => {
@@ -57,7 +57,7 @@ const ViewMenu = ({
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [handleZoomIn, handleZoomOut]);
 
     const menuItems = [
         {
