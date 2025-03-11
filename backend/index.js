@@ -8,8 +8,13 @@ const app = express();
 // Connect Database
 connectDB();
 
-// Middleware
-app.use(cors());
+// CORS Configuration
+app.use(cors({
+    origin: ['https://darwin12.netlify.app', 'http://localhost:3000'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Configure Express to handle large payloads
 app.use(express.json({ limit: '50mb', extended: true }));
