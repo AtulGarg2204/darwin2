@@ -11,7 +11,6 @@ import {
     PaintBucket,
     Percent,
     DollarSign,
-    Type,
     MinusCircle,
     PlusCircle
 } from 'lucide-react';
