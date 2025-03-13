@@ -37,7 +37,7 @@ const ChartRenderer = ({ data, chartType, xAxis, yAxis, categories }) => {
             <Line type="monotone" dataKey={yAxis} stroke="#8884d8" />
           </LineChart>
         );
-
+      
       case 'bar':
         return (
           <BarChart data={processedData}>

@@ -2,9 +2,12 @@ import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle, us
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import * as XLSX from 'xlsx';
-import { 
-  LineChart, Line, BarChart, Bar,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+import {
+    LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area,
+    RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
+    ScatterChart, Scatter, RadialBarChart, RadialBar,
+    ComposedChart, Treemap
 } from 'recharts';
 import excelFunctions from "../../utils/ExcelFunctions";
 
@@ -31,20 +34,19 @@ const DataGrid = forwardRef(({
     const [fileName, setFileName] = useState('');
     const { token } = useAuth();
     const fileInputRef = useRef(null);
-    const [chartConfig, setChartConfig] = useState(null);
-    const CHART_SIZE = { width: 5, height: 5 }; // 5x5 chart size
+
+    const CHART_SIZE = { width: 5, height: 15 }; // 5x5 chart size
     const [formulaBar, setFormulaBar] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [formulas, setFormulas] = useState({});
-    const [visibleRows, setVisibleRows] = useState(MIN_VISIBLE_ROWS);
+  
     const [visibleCols, setVisibleCols] = useState(MIN_VISIBLE_COLS);
     const gridRef = useRef(null);
-   console.log(visibleRows);
-    // Add selection state
+
     const [selectionStart, setSelectionStart] = useState(null);
     const [selectionEnd, setSelectionEnd] = useState(null);
     const [isSelecting, setIsSelecting] = useState(false);
-    console.log(chartConfig);
+   
     // Initialize with minimum number of rows and columns
     useEffect(() => {
         // Initialize with empty data if not provided
@@ -106,7 +108,7 @@ const DataGrid = forwardRef(({
     }, []);
     const expandGrid = useCallback((addRows, addCols) => {
         if (addRows > 0) {
-            const currentRowCount = data.length;
+           
             const newData = [...data];
             
             // Add new rows
@@ -115,7 +117,7 @@ const DataGrid = forwardRef(({
             }
             
             setData(newData);
-            setVisibleRows(currentRowCount + addRows);
+           
         }
         
         if (addCols > 0) {
@@ -565,12 +567,9 @@ const DataGrid = forwardRef(({
                 return;
             }
         }
-
-        console.log('Raw paste data:', pasteData);
         
         // Split by newline and handle both \r\n and \n
         const rows = pasteData.split(/[\r\n]+/).filter(row => row.trim() !== '');
-        console.log('Parsed rows:', rows);
 
         const startRow = activeCell.row;
         const startCol = activeCell.col;
@@ -581,7 +580,7 @@ const DataGrid = forwardRef(({
         rows.forEach((row, rowIndex) => {
             // Split by tab or comma, handling quoted values correctly
             const cells = row.split(/\t|,/).map(cell => cell.trim().replace(/^["']|["']$/g, ''));
-            console.log(`Processing row ${rowIndex}:`, cells);
+          
             
             cells.forEach((cell, colIndex) => {
                 const targetRow = startRow + rowIndex;
@@ -601,8 +600,6 @@ const DataGrid = forwardRef(({
                 newData[targetRow][targetCol] = cell;
             });
         });
-        
-        console.log('Updated data:', newData);
         setData(newData);
     }, [data, activeCell, setData]);
 
@@ -685,7 +682,7 @@ const DataGrid = forwardRef(({
                     
                     setHeaders(newHeaders);
                     setData(uniformData);
-                    setVisibleRows(Math.max(MIN_VISIBLE_ROWS, uniformData.length));
+              
                     setVisibleCols(colCount);
                 }
             } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
@@ -722,7 +719,7 @@ const DataGrid = forwardRef(({
                         
                         setHeaders(newHeaders);
                         setData(uniformData);
-                        setVisibleRows(Math.max(MIN_VISIBLE_ROWS, uniformData.length));
+                      
                         setVisibleCols(colCount);
                     }
                 } catch (error) {
@@ -767,97 +764,100 @@ const DataGrid = forwardRef(({
         }
     };
 
-    // Function to prepare chart data from OpenAI format
-    const prepareChartData = (aiResponse = null) => {
-        if (aiResponse) {
-            console.log('Preparing chart data from AI response:', aiResponse);
+    // // Function to prepare chart data from OpenAI format
+    // const prepareChartData = (aiResponse = null) => {
+    //     if (aiResponse) {
+    //         console.log('Preparing chart data from AI response:', aiResponse);
             
-            // If we have AI-generated data, use it directly
-            if (aiResponse.data?.labels && aiResponse.data?.datasets) {
-                const chartData = aiResponse.data.labels.map((label, index) => {
-                    const dataPoint = { name: label };
-                    // Add all dataset values
-                    aiResponse.data.datasets.forEach(dataset => {
-                        if (dataset.data && dataset.data[index] !== undefined) {
-                            dataPoint[dataset.label || 'Value'] = dataset.data[index];
-                        }
-                    });
-                    return dataPoint;
-                });
+    //         // If we have AI-generated data, use it directly
+    //         if (aiResponse.data?.labels && aiResponse.data?.datasets) {
+    //             const chartData = aiResponse.data.labels.map((label, index) => {
+    //                 const dataPoint = { name: label };
+    //                 // Add all dataset values
+    //                 aiResponse.data.datasets.forEach(dataset => {
+    //                     if (dataset.data && dataset.data[index] !== undefined) {
+    //                         dataPoint[dataset.label || 'Value'] = dataset.data[index];
+    //                     }
+    //                 });
+    //                 return dataPoint;
+    //             });
                 
-                console.log('Prepared chart data:', chartData);
-                return chartData;
-            }
-        }
+    //             console.log('Prepared chart data:', chartData);
+    //             return chartData;
+    //         }
+    //     }
+    //     console.log("DATA",data);
+    //     // Fallback to grid data format
+    //     if (!data || data.length < 2) {
+    //         console.log('No data available for chart');
+    //         return [];
+    //     }
         
-        // Fallback to grid data format
-        if (!data || data.length < 2) {
-            console.log('No data available for chart');
-            return [];
-        }
-        
-        // Get the data rows (skip empty rows)
-        const rows = data.filter(row => row && row.some(cell => cell !== ''));
-        if (rows.length < 2) {
-            console.log('Not enough data rows for chart');
-            return [];
-        }
+    //     // Get the data rows (skip empty rows)
+    //     const rows = data.filter(row => row && row.some(cell => cell !== ''));
+    //     if (rows.length < 2) {
+    //         console.log('Not enough data rows for chart');
+    //         return [];
+    //     }
 
-        // Get the header row (first row)
-        const headerRow = rows[0];
-        
-        // Find numeric columns
-        const numericColumns = [];
-        for (let i = 0; i < headerRow.length; i++) {
-            // Check if this column has any numeric values
-            const hasNumericValues = rows.slice(1).some(row => {
-                const value = row[i];
-                return value !== '' && !isNaN(parseFloat(value));
-            });
-            if (hasNumericValues) {
-                numericColumns.push(i);
-            }
-        }
+    //     // Get the header row (first row)
+    //     const headerRow = rows[0];
+    //     console.log(headerRow,"headerRowsss");
+    //     // Find numeric columns
+    //     const numericColumns = [];
+    //     for (let i = 0; i < headerRow.length; i++) {
+    //         // Check if this column has any numeric values
+    //         const hasNumericValues = rows.slice(1).some(row => {
+    //             const value = row[i];
+    //             return value !== '' && !isNaN(parseFloat(value));
+    //         });
+    //         if (hasNumericValues) {
+    //             numericColumns.push(i);
+    //         }
+    //     }
 
-        console.log('Found numeric columns:', numericColumns);
+    //     console.log('Found numeric columns:', numericColumns);
 
-        // Transform data rows into chart format
-        const chartData = rows.slice(1) // Skip header row
-            .map(row => {
-                if (!row || row.length === 0) return null;
+    //     // Transform data rows into chart format
+    //     const chartData = rows.slice(1) // Skip header row
+    //         .map(row => {
+    //             if (!row || row.length === 0) return null;
 
-                const dataPoint = {
-                    name: row[0] || 'Unnamed' // Use first column as name
-                };
+    //             const dataPoint = {
+    //                 name: row[0] || 'Unnamed' // Use first column as name
+    //             };
 
-                // Add all numeric columns to the data point
-                numericColumns.forEach(colIndex => {
-                    if (colIndex !== 0) { // Skip the name column
-                        const value = parseFloat(row[colIndex]);
-                        if (!isNaN(value)) {
-                            dataPoint[headerRow[colIndex] || `Column ${colIndex}`] = value;
-                        }
-                    }
-                });
+    //             // Add all numeric columns to the data point
+    //             numericColumns.forEach(colIndex => {
+    //                 if (colIndex !== 0) { // Skip the name column
+    //                     const value = parseFloat(row[colIndex]);
+    //                     if (!isNaN(value)) {
+    //                         dataPoint[headerRow[colIndex] || `Column ${colIndex}`] = value;
+    //                     }
+    //                 }
+    //             });
 
-                return dataPoint;
-            })
-            .filter(point => point !== null && Object.keys(point).length > 1); // Must have at least name and one value
+    //             return dataPoint;
+    //         })
+    //         .filter(point => point !== null && Object.keys(point).length > 1); // Must have at least name and one value
 
-        console.log('Generated chart data:', chartData);
-        return chartData;
-    };
+    //     console.log('Generated chart data:', chartData);
+    //     return chartData;
+    // };
     
     // Function to create chart
-    const createChart = (type = 'bar', startCell = activeCell, aiResponse = null) => {
+    const createChart = (type = 'bar', startCell = activeCell, chartConfig = null) => {
         if (!startCell) return;
         
         const newData = [...data];
+        console.log(newData,"NEW DATA IS ");
+        console.log("Creating chart with config:", chartConfig);
+        
         // Ensure we have enough rows and columns for the chart
         while (newData.length <= startCell.row + CHART_SIZE.height) {
             newData.push(Array(newData[0]?.length || 1).fill(''));
         }
-
+    
         // Mark the chart area
         for (let i = 0; i < CHART_SIZE.height; i++) {
             for (let j = 0; j < CHART_SIZE.width; j++) {
@@ -866,8 +866,7 @@ const DataGrid = forwardRef(({
                 }
                 if (i === 0 && j === 0) {
                     // Store chart configuration in the cell
-                    const chartData = aiResponse ? JSON.stringify(aiResponse) : type;
-                    newData[startCell.row][startCell.col] = `CHART:${chartData}:START`;
+                    newData[startCell.row][startCell.col] = `CHART:${JSON.stringify(chartConfig)}:START`;
                 } else {
                     newData[startCell.row + i][startCell.col + j] = 'CHART:OCCUPIED';
                 }
@@ -875,17 +874,45 @@ const DataGrid = forwardRef(({
         }
         
         setData(newData);
-        setChartConfig({
-            type,
-            startCell: { ...startCell },
-            size: CHART_SIZE,
-            aiResponse
-        });
     };
-    
+    // Custom component for Treemap to display labels inside
+const CustomizedTreemapContent = (props) => {
+    const {  depth, x, y, width, height, name, value } = props;
+  
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          style={{
+            fill: props.fill || '#8884d8',
+            stroke: '#fff',
+            strokeWidth: 2 / (depth + 1e-10),
+            strokeOpacity: 1 / (depth + 1e-10),
+          }}
+        />
+        {width > 50 && height > 30 ? (
+          <text
+            x={x + width / 2}
+            y={y + height / 2}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#fff"
+            fontSize={12}
+          >
+            {name}: {value !== undefined ? value.toFixed(1) : ''}
+          </text>
+        ) : null}
+      </g>
+    );
+  };
     // Function to render chart
-    const renderChart = (type, startCell, aiResponse = null) => {
-        const chartData = prepareChartData(aiResponse);
+    const renderChart = (type, startCell, chartConfig = null) => {
+        console.log("Rendering chart with config:", chartConfig);
+        
+        // Create default style for the chart container
         const chartStyle = {
             width: `${CHART_SIZE.width * 120}px`,
             height: `${CHART_SIZE.height * 25}px`,
@@ -896,104 +923,494 @@ const DataGrid = forwardRef(({
             overflow: 'hidden',
             zIndex: 10
         };
-
-        // Get chart options from AI response
-        const options = aiResponse?.options || {};
-
+    
+        // If no chart config is provided or it's not in the expected format, use default behavior
+        if (!chartConfig || !chartConfig.data || !chartConfig.type) {
+            console.log("Using default chart rendering, no valid config provided");
+            // Your existing fallback code for rendering charts
+            return <div style={chartStyle}>Invalid chart configuration</div>;
+        }
+        
+        // Extract data and settings from the chart config
+        const chartData = chartConfig.data;
+        const chartTitle = chartConfig.title || 'Chart';
+        const chartColors = chartConfig.colors || ['#8884d8', '#82ca9d', '#ffc658', '#ff8042'];
+        
         // Get data keys (excluding 'name')
-        const getDataKeys = () => {
-            if (aiResponse?.data?.datasets) {
-                return aiResponse.data.datasets.map(ds => ds.label);
-            }
-            if (chartData.length > 0) {
-                // Get all keys except 'name', filter out empty or undefined keys
-                return Object.keys(chartData[0])
-                    .filter(key => key !== 'name' && chartData[0][key] !== undefined);
-            }
-            return [];
-        };
+        const dataKeys = Object.keys(chartData[0]).filter(key => key !== 'name');
+        console.log("Chart data keys:", dataKeys);
         
-        const dataKeys = getDataKeys();
-        
-        // Generate colors for data series
-        const getSeriesColor = (index, dataset = null) => {
-            if (aiResponse?.data?.datasets?.[index]?.borderColor) {
-                return aiResponse.data.datasets[index].borderColor;
-            }
-            const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F'];
-            return colors[index % colors.length];
-        };
+        // Render the appropriate chart type
+        switch (chartConfig.type.toLowerCase()) {
+            case 'bar':
+                return (
+                    <div style={chartStyle}>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <BarChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index) => (
+                                    <Bar 
+                                        key={key} 
+                                        dataKey={key} 
+                                        fill={chartColors[index % chartColors.length]} 
+                                        name={key}
+                                        label={{
+                                position: 'top',
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12
+                            }}
+                                    />
+                                ))}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                );
+                case 'column':
+                    return (
+                        <div style={chartStyle}>
+                            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                            <ResponsiveContainer width="100%" height="90%">
+                                <BarChart 
+                                    data={chartData}
+                                    layout="vertical"
+                                >
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis type="number" />
+                                    <YAxis 
+                                        dataKey="name" 
+                                        type="category" 
+                                        width={80}
+                                    />
+                                    <Tooltip />
+                                    <Legend />
+                                    {dataKeys.map((key, index) => (
+                                        <Bar 
+                                            key={key} 
+                                            dataKey={key} 
+                                            fill={chartColors[index % chartColors.length]} 
+                                            name={key}
+                                            label={{
+                                position: 'right',
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12
+                            }}
+                                        />
+                                    ))}
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    );
 
-        // Get axis labels
-        const xAxisLabel = options?.scales?.x?.title?.text || data[0]?.[0] || 'Name';
-        const yAxisLabel = options?.scales?.y?.title?.text || 'Value';
-        
-        return (
-            <div style={chartStyle}>
-                <ResponsiveContainer width="100%" height="100%">
-                    {type === 'bar' && (
-                        <BarChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis 
-                                dataKey="name"
-                                label={{
-                                    value: xAxisLabel,
-                                    position: 'bottom'
-                                }}
-                            />
-                            <YAxis
-                                label={{
-                                    value: yAxisLabel,
-                                    angle: -90,
-                                    position: 'left'
-                                }}
+            case 'line':
+                return (
+                    <div style={chartStyle}>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index) => (
+                                    <Line 
+                                        key={key} 
+                                        type="monotone" 
+                                        dataKey={key} 
+                                        stroke={chartColors[index % chartColors.length]} 
+                                        name={key}
+                                        label={{
+                                position: 'top',
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12
+                            }}
+                                    />
+                                ))}
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                );
+                
+            case 'pie':
+                return (
+                    <div style={chartStyle}>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <PieChart>
+                                <Pie
+                                    data={chartData}
+                                    dataKey={dataKeys[0]}
+                                    nameKey="name"
+                                    cx="50%"
+                                    cy="50%"
+                                    outerRadius={80}
+                                    fill="#8884d8"
+                                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                >
+                                    {chartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                );
+                
+            case 'area':
+                return (
+                    <div style={chartStyle}>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <AreaChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index) => (
+                                    <Area 
+                                        key={key} 
+                                        type="monotone" 
+                                        dataKey={key} 
+                                        fill={chartColors[index % chartColors.length]} 
+                                        stroke={chartColors[index % chartColors.length]} 
+                                        fillOpacity={0.6}
+                                        name={key}
+                                        label={{
+                                position: 'top',
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12
+                            }}
+                                    />
+                                ))}
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                );
+            case 'radar':
+            return (
+                <div style={chartStyle}>
+                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                    <ResponsiveContainer width="100%" height="90%">
+                        <RadarChart cx="50%" cy="50%" outerRadius={80} data={chartData}>
+                            <PolarGrid />
+                            <PolarAngleAxis dataKey="name" />
+                            <PolarRadiusAxis />
+                            {dataKeys.map((key, index) => (
+                                <Radar
+                                    key={key}
+                                    name={key}
+                                    dataKey={key}
+                                    stroke={chartColors[index % chartColors.length]}
+                                    fill={chartColors[index % chartColors.length]}
+                                    fillOpacity={0.6}
+                                    label={{
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12,
+                                position: 'outside'
+                            }}
+                                />
+                            ))}
+                            <Legend />
+                            <Tooltip />
+                        </RadarChart>
+                    </ResponsiveContainer>
+                </div>
+            );
+            
+            case 'scatter':
+                return (
+                    <div style={chartStyle}>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <ScatterChart>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis 
+                                    type="number" 
+                                    dataKey={dataKeys[0]} 
+                                    name={dataKeys[0]}
+                                    domain={['auto', 'auto']}
+                                    label={{ 
+                                        value: dataKeys[0], 
+                                        position: 'bottom',
+                                        style: { textAnchor: 'middle' }
+                                    }}
+                                />
+                                <YAxis 
+                                    type="number" 
+                                    dataKey={dataKeys[1]} 
+                                    name={dataKeys[1]}
+                                    label={{ 
+                                        value: dataKeys[1], 
+                                        angle: -90, 
+                                        position: 'insideLeft',
+                                        style: { textAnchor: 'middle' }
+                                        
+                                    }}
+                                />
+                                <Tooltip 
+                                    cursor={{ strokeDasharray: '3 3' }}
+                                    formatter={(value, name) => [value, name]}
+                                    labelFormatter={(_, payload) => {
+                                        if (payload && payload.length > 0) {
+                                            return payload[0].payload.name;
+                                        }
+                                        return '';
+                                    }}
+                                />
+                                <Legend />
+                                <Scatter
+                                    name={`${dataKeys[0]} vs ${dataKeys[1]}`}
+                                    data={chartData}
+                                    fill={chartColors[0]}
+                                    label={{ 
+                            dataKey: 'name',
+                            position: 'top',
+                            fill: '#666',
+                            fontSize: 10
+                        }}
+                                />
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </div>
+                );
+            
+        case 'funnel':
+            // For funnel charts, we'll use a simple Bar chart with some styling
+            return (
+                <div style={chartStyle}>
+                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                    <ResponsiveContainer width="100%" height="90%">
+                        <BarChart 
+                            data={chartData}
+                            layout="vertical"
+                            barCategoryGap={1}
+                            maxBarSize={40}
+                        >
+                            <XAxis type="number" hide />
+                            <YAxis 
+                                dataKey="name" 
+                                type="category" 
+                                width={100}
+                                axisLine={false}
+                                tickLine={false}
                             />
                             <Tooltip />
                             <Legend />
                             {dataKeys.map((key, index) => (
                                 <Bar 
-                                    key={key}
-                                    dataKey={key}
+                                    key={key} 
+                                    dataKey={key} 
+                                    fill={chartColors[index % chartColors.length]} 
                                     name={key}
-                                    fill={getSeriesColor(index)}
+                                    label={{
+                                position: 'right',
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12
+                            }}
+                                    shape={(props) => {
+                                        // Create trapezoid shape for funnel effect
+                                        const { x, y, width, height } = props;
+                                        return (
+                                            <path
+                                                d={`M${x},${y} L${x + width * 0.95},${y} L${x + width},${y + height} L${x},${y + height} Z`}
+                                                fill={props.fill}
+                                            />
+                                        );
+                                    }}
                                 />
                             ))}
                         </BarChart>
-                    )}
-                    {type === 'line' && (
-                        <LineChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis 
-                                dataKey="name"
+                    </ResponsiveContainer>
+                </div>
+            );
+            
+        case 'radialbar':
+            return (
+                <div style={chartStyle}>
+                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                    <ResponsiveContainer width="100%" height="90%">
+                        <RadialBarChart 
+                            cx="50%" 
+                            cy="50%" 
+                            innerRadius="20%" 
+                            outerRadius="80%" 
+                            data={chartData}
+                            startAngle={180} 
+                            endAngle={0}
+                        >
+                            <RadialBar
                                 label={{
-                                    value: xAxisLabel,
-                                    position: 'bottom'
-                                }}
-                            />
-                            <YAxis
-                                label={{
-                                    value: yAxisLabel,
-                                    angle: -90,
-                                    position: 'left'
-                                }}
+                            position: 'insideEnd',
+                            fill: '#fff',
+                            formatter: (value) => `${value.toFixed(1)}`,
+                            fontSize: 12
+                        }}
+                                background
+                                dataKey={dataKeys[0]}
+                            >
+                                {chartData.map((entry, index) => (
+                                    <Cell 
+                                        key={`cell-${index}`} 
+                                        fill={chartColors[index % chartColors.length]} 
+                                    />
+                                ))}
+                            </RadialBar>
+                            <Legend 
+                                iconSize={10} 
+                                layout="vertical" 
+                                verticalAlign="middle" 
+                                align="right"
                             />
                             <Tooltip />
+                        </RadialBarChart>
+                    </ResponsiveContainer>
+                </div>
+            );
+            
+        case 'composed':
+            return (
+                <div style={chartStyle}>
+                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                    <ResponsiveContainer width="100%" height="90%">
+                        <ComposedChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip />
                             <Legend />
-                            {dataKeys.map((key, index) => (
-                                <Line 
-                                    key={key}
-                                    type="monotone"
-                                    dataKey={key}
-                                    name={key}
-                                    stroke={getSeriesColor(index)}
-                                    fill="none"
+                            {dataKeys.map((key, index, array) => {
+                                if (index === 0) {
+                                    return (
+                                        <Bar 
+                                            key={key} 
+                                            dataKey={key} 
+                                            fill={chartColors[index % chartColors.length]} 
+                                            name={key}
+                                            label={{
+                                            position: 'top',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
+                                        />
+                                    );
+                                } else if (index === 1) {
+                                    return (
+                                        <Line 
+                                            key={key}
+                                            type="monotone"
+                                            dataKey={key}
+                                            stroke={chartColors[index % chartColors.length]}
+                                            name={key}
+                                            label={{
+                                            position: 'top',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
+                                        />
+                                    );
+                                } else if (index === 2) {
+                                    return (
+                                        <Area
+                                            key={key}
+                                            type="monotone"
+                                            dataKey={key}
+                                            fill={chartColors[index % chartColors.length]}
+                                            stroke={chartColors[index % chartColors.length]}
+                                            fillOpacity={0.6}
+                                            name={key}
+                                            label={{
+                                            position: 'top',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
+                                        />
+                                    );
+                                }
+                                return null;
+                            })}
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </div>
+            );
+            
+        case 'treemap':
+            return (
+                <div style={chartStyle}>
+                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                    <ResponsiveContainer width="100%" height="90%">
+                        <Treemap
+                            data={chartData.map(item => ({
+                                name: item.name,
+                                size: item[dataKeys[0]],
+                                value: item[dataKeys[0]]
+                            }))}
+                            dataKey="size"
+                            aspectRatio={4/3}
+                            stroke="#fff"
+                            fill={chartColors[0]}
+                            content={<CustomizedTreemapContent />}
+                        >
+                            {chartData.map((entry, index) => (
+                                <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={chartColors[index % chartColors.length]} 
                                 />
                             ))}
-                        </LineChart>
-                    )}
-                </ResponsiveContainer>
-            </div>
-        );
+                            <Tooltip formatter={(value) => [`${value}`, dataKeys[0]]} />
+                        </Treemap>
+                    </ResponsiveContainer>
+                </div>
+            );
+            
+            default:
+                console.log(`Unsupported chart type: ${chartConfig.type}, falling back to bar chart`);
+                return (
+                    <div style={chartStyle}>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle} (Bar Chart)</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <BarChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index) => (
+                                    <Bar 
+                                        key={key} 
+                                        dataKey={key} 
+                                        fill={chartColors[index % chartColors.length]} 
+                                        name={key}
+                                        label={{
+                                position: 'top',
+                                formatter: (value) => value.toFixed(1),
+                                fill: '#666',
+                                fontSize: 12
+                            }}
+                                    />
+                                ))}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                );
+    
+        }
     };
     
     // Expose createChart to parent components
@@ -1082,27 +1499,29 @@ const DataGrid = forwardRef(({
         >
             {typeof row[colIndex] === 'string' && row[colIndex]?.startsWith('CHART:') ? (
                 row[colIndex].includes(':START') && (() => {
-                    const chartData = row[colIndex].split(':')[1];
-                    let type = chartData;
-                    let aiResponse = null;
-                    
+                    const parts = row[colIndex].split(':');
                     try {
-                        const parsedData = JSON.parse(chartData);
-                        type = parsedData.type;
-                        aiResponse = parsedData;
-                    } catch (e) {}
-                    
-                    return renderChart(type, { row: rowIndex, col: colIndex }, aiResponse);
+                        // Extract the chart configuration from the cell value
+                        const chartConfigStr = parts.slice(1, -1).join(':');
+                        const chartConfig = JSON.parse(chartConfigStr);
+                        console.log("Cell contains chart config:", chartConfig);
+                        
+                        // Render the chart with the extracted configuration
+                        return renderChart(chartConfig.type || 'bar', { row: rowIndex, col: colIndex }, chartConfig);
+                    } catch (error) {
+                        console.error("Error parsing chart config from cell:", error);
+                        return <div>Error rendering chart</div>;
+                    }
                 })()
             ) : (
-            <input
-                type="text"
+                <input
+                    type="text"
                     value={
                         activeCell?.row === rowIndex && activeCell?.col === colIndex
                             ? formulas[`${rowIndex}-${colIndex}`] || row[colIndex] || ''
                             : formatCellValue(row[colIndex], rowIndex, colIndex)
                     }
-                onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
+                    onChange={(e) => handleCellChange(rowIndex, colIndex, e.target.value)}
                     onBlur={() => {
                         if (isEditing) {
                             setIsEditing(false);

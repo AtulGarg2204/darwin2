@@ -8,230 +8,223 @@ const OpenAI = require('openai');
 const openai = new OpenAI({
  apiKey: process.env.OPENAI_API_KEY
 });
-
-// @route   POST api/chat/analyze
-// @desc    Analyze data using OpenAI API
-router.post('/analyze', auth, async (req, res) => {
-  try {
-    const { message, recordId, includeChartSuggestion, data } = req.body;
-    
-    let dataContext = '';
-    let chartPrompt = '';
-    let analysisData = data;  // Use provided data if available
-    
-    if (recordId) {
-      const record = await Record.findById(recordId);
-      if (!record) {
-        return res.status(404).json({ msg: 'Record not found' });
-      }
-      analysisData = record.data;
-    }
-    
-    if (analysisData && analysisData.length > 0) {
-      dataContext = 'Here is the data to analyze:\n';
-      const headers = Object.keys(analysisData[0]);
-      dataContext += headers.join(', ') + '\n';
-      
-      analysisData.slice(0, 5).forEach(row => {
-        dataContext += headers.map(header => row[header]).join(', ') + '\n';
-      });
-    }
-
-    if (includeChartSuggestion) {
-      chartPrompt = `
-Based on the data and user's request, generate a chart configuration in the following format:
-
-\`\`\`json
-{
-  "type": "line",
-  "data": {
-    "labels": ["label1", "label2", "label3"],
-    "datasets": [{
-      "label": "Dataset Label",
-      "data": [value1, value2, value3],
-      "borderColor": "color_name_or_hex",
-      "fill": boolean
-    }]
-  },
-  "options": {
-    "scales": {
-      "x": {
-        "title": {
-          "display": true,
-          "text": "X-Axis Label"
-        }
-      },
-      "y": {
-        "title": {
-          "display": true,
-          "text": "Y-Axis Label"
-        }
-      }
-    }
-  }
-}
-\`\`\`
-
-Important:
-1. Choose appropriate values from the data for labels and datasets
-2. Select a suitable chart type (line, bar, pie, area)
-3. Use meaningful axis labels based on the data columns
-4. Include proper dataset labels
-5. Choose appropriate colors
-6. The configuration must be valid JSON and match this exact format
-`;
-    }
-    
-    const systemMessage = `
-You are a data visualization expert. Your task is to:
-1. Analyze the provided data
-2. Answer questions about it clearly and concisely
-3. When asked about visualizations, ALWAYS provide a chart configuration in the exact JSON format specified
-4. Make sure the chart configuration uses actual values from the provided data
-5. Choose appropriate chart types and colors based on the data type and user's request
-6. Ensure all JSON is properly formatted and valid
-`;
-    
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
-      messages: [
-        { role: "system", content: systemMessage },
-        { role: "user", content: `${dataContext}\n\nUser Request: ${message}\n\n${chartPrompt}` }
-      ],
-      temperature: 0.7,
-      max_tokens: 1500,
-      response_format: { type: "text" }
+router.post('/analyze2', auth, async (req, res) => {
+    const { message, data } = req.body;
+    console.log("Received data:", {
+        messageLength: message?.length || 0,
+        dataLength: data?.length || 0,
+        sampleData: data?.slice(0, 2) || []
     });
-    
-    // Extract the chart configuration if present
-    let chartConfig = null;
-    const response = completion.choices[0].message.content;
     
     try {
-      const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch) {
-        // Replace single quotes with double quotes and handle escaped quotes
-        let jsonStr = jsonMatch[1]
-          .replace(/'/g, '"')  // Replace all single quotes with double quotes
-          .replace(/\s+/g, ' ') // Normalize whitespace
-          .trim();
+        const openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
 
-        // Additional safety check for common JSON issues
-        jsonStr = jsonStr
-          .replace(/([{,]\s*)(\w+):/g, '$1"$2":') // Ensure property names are quoted
-          .replace(/:\s*"([^"]+)"\s*([,}])/g, ':"$1"$2'); // Ensure string values are properly quoted
+        const systemPrompt = `You are a helpful data analyst assistant. Analyze the provided data and answer questions about it clearly and concisely.
 
-        console.log('Attempting to parse JSON:', jsonStr);
-        chartConfig = JSON.parse(jsonStr);
+When asked to create or show a chart:
+1. Analyze the provided data structure carefully
+2. Return a JSON response with the following structure:
+{
+  "type": "bar", // The chart type: "bar", "line", "pie", "area", etc.
+  "title": "Chart Title",
+  "data": [
+    { "name": "Category1", "value1": 10, "value2": 20 },
+    { "name": "Category2", "value1": 15, "value2": 25 }
+  ],
+  "colors": ["#8884d8", "#82ca9d"] // Color scheme for the chart
+}
+3. Ensure the "data" property contains properly formatted objects that Recharts can directly use
+4. Always include a "name" property for each data point, which will be used for the X-axis or labels
+5. Include numeric values with appropriate keys (avoid using spaces or special characters in keys)
+6. Do NOT return JSX or React component code
+
+Examples of valid JSON responses:
+For a bar chart:
+{
+  "type": "bar",
+  "title": "Monthly Sales",
+  "data": [
+    { "name": "Jan", "sales": 4000, "revenue": 2400 },
+    { "name": "Feb", "sales": 3000, "revenue": 1398 }
+  ],
+  "colors": ["#8884d8", "#82ca9d"]
+}
+
+For a pie chart:
+{
+  "type": "pie",
+  "title": "Revenue Distribution",
+  "data": [
+    { "name": "Product A", "value": 400 },
+    { "name": "Product B", "value": 300 }
+  ],
+  "colors": ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"]
+}
+
+For a column chart:
+{
+  "type": "column",
+  "title": "Product Performance",
+  "data": [
+    { "name": "Product A", "revenue": 4000, "profit": 2400 },
+    { "name": "Product B", "revenue": 3000, "profit": 1398 }
+  ],
+  "colors": ["#8884d8", "#82ca9d"]
+}
+
+For a radar chart:
+{
+  "type": "radar",
+  "title": "Feature Comparison",
+  "data": [
+    { "name": "Feature A", "product1": 120, "product2": 110, "product3": 140 },
+    { "name": "Feature B", "product1": 98, "product2": 130, "product3": 150 },
+    { "name": "Feature C", "product1": 86, "product2": 130, "product3": 130 }
+  ],
+  "colors": ["#8884d8", "#82ca9d", "#ffc658"]
+}
+
+For a scatter chart:
+{
+  "type": "scatter",
+  "title": "Height vs Weight Correlation",
+  "data": [
+    { "name": "Person A", "height": 170, "weight": 67 },
+    { "name": "Person B", "height": 178, "weight": 80 },
+    { "name": "Person C", "height": 175, "weight": 73 }
+  ],
+  "colors": ["#8884d8", "#82ca9d"]
+}
+
+For a funnel chart:
+{
+  "type": "funnel",
+  "title": "Sales Funnel",
+  "data": [
+    { "name": "Website Visits", "value": 5000 },
+    { "name": "Downloads", "value": 3500 },
+    { "name": "Prospects", "value": 2500 },
+    { "name": "Customers", "value": 1200 }
+  ],
+  "colors": ["#8884d8", "#82ca9d", "#ffc658", "#ff8042"]
+}
+
+For a radial bar chart:
+{
+  "type": "radialBar",
+  "title": "Achievement Progress",
+  "data": [
+    { "name": "Goal 1", "value": 70 },
+    { "name": "Goal 2", "value": 95 },
+    { "name": "Goal 3", "value": 53 },
+    { "name": "Goal 4", "value": 85 }
+  ],
+  "colors": ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"]
+}
+
+For a composed chart (combining bar, line, and area):
+{
+  "type": "composed",
+  "title": "Business Performance",
+  "data": [
+    { "name": "Q1", "revenue": 4000, "profit": 2400, "forecast": 3000 },
+    { "name": "Q2", "revenue": 3000, "profit": 1398, "forecast": 2000 },
+    { "name": "Q3", "revenue": 2000, "profit": 9800, "forecast": 2780 },
+    { "name": "Q4", "revenue": 2780, "profit": 3908, "forecast": 2500 }
+  ],
+  "colors": ["#8884d8", "#82ca9d", "#ffc658"]
+}
+
+For a treemap chart:
+{
+  "type": "treemap",
+  "title": "Market Share Distribution",
+  "data": [
+    { "name": "Company A", "value": 4000 },
+    { "name": "Company B", "value": 3000 },
+    { "name": "Company C", "value": 2000 },
+    { "name": "Company D", "value": 1000 }
+  ],
+  "colors": ["#8884d8", "#82ca9d", "#ffc658", "#ff8042"]
+}
+  
+Always make sure the structure of your response is clean, consistent, and directly usable by Recharts.`;
+
+        const openaiResponse = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+                {
+                    "role": "system",
+                    "content": systemPrompt
+                },
+                {
+                    "role": "user",
+                    "content": `Here is my data: ${JSON.stringify(data)}\n\nMy question: ${message}`
+                }
+            ],
+            temperature: 0.7,
+            max_tokens: 2048,
+            top_p: 1
+        });
+       
+        console.log("OpenAI response:", {
+            status: openaiResponse.choices[0].finish_reason,
+            responseLength: openaiResponse.choices[0].message.content.length,
+        });
         
-        // Validate required chart properties
-        if (!chartConfig.type || !chartConfig.data) {
-          console.error('Invalid chart config structure:', chartConfig);
-          chartConfig = null;
-        }
-      }
-    } catch (error) {
-      console.error('Error parsing chart config:', error);
-      // Attempt to create a basic chart config from the data
-      try {
-        // Find numeric columns for potential chart data
-        const headers = Object.keys(analysisData[0] || {});
-        const numericColumns = headers.filter(header => 
-          analysisData.some(row => !isNaN(parseFloat(row[header])))
-        );
+        // Extract the assistant's response
+        const assistantResponse = openaiResponse.choices[0].message.content;
+        console.log("Assistant response:", assistantResponse);
         
-        if (numericColumns.length > 0) {
-          chartConfig = {
-            type: "bar",
-            data: {
-              labels: analysisData.slice(0, 10).map(row => row[headers[0]] || ''),
-              datasets: [{
-                label: numericColumns[0],
-                data: analysisData.slice(0, 10).map(row => parseFloat(row[numericColumns[0]]) || 0),
-                borderColor: "#8884d8",
-                fill: false
-              }]
-            },
-            options: {
-              scales: {
-                x: { title: { display: true, text: headers[0] } },
-                y: { title: { display: true, text: numericColumns[0] } }
-              }
+        // Parse out the chart config
+        let chartConfig = null;
+        try {
+            // Look for JSON in the response
+            const jsonMatch = assistantResponse.match(/```json\s*([\s\S]*?)\s*```/);
+            if (jsonMatch && jsonMatch[1]) {
+                chartConfig = JSON.parse(jsonMatch[1].trim());
+                console.log("Extracted chart config from code block:", chartConfig);
+            } else {
+                // Try to find JSON without code blocks
+                const jsonRegex = /\{[\s\S]*"type"[\s\S]*"data"[\s\S]*\}/g;
+                const possibleJson = assistantResponse.match(jsonRegex);
+                if (possibleJson) {
+                    try {
+                        chartConfig = JSON.parse(possibleJson[0]);
+                        console.log("Extracted chart config from text:", chartConfig);
+                    } catch (e) {
+                        console.error("Failed to parse JSON from text:", e);
+                    }
+                }
             }
-          };
+        } catch (parseError) {
+            console.error('Error parsing chart config:', parseError);
         }
-      } catch (fallbackError) {
-        console.error('Error creating fallback chart config:', fallbackError);
-      }
-    }
-    
-    res.json({ 
-      answer: response,
-      chartConfig,
-      data: analysisData
-    });
-    
-  } catch (err) {
-    console.error('Chat API Error:', err);
-    res.status(500).json({ 
-      error: 'Server Error',
-      details: err.message 
-    });
-  }
-});
 
-// @route   POST api/chat/visualize
-// @desc    Generate visualization suggestions for data
-router.post('/visualize', auth, async (req, res) => {
-  try {
-    const { recordId } = req.body;
-    
-    const record = await Record.findById(recordId);
-    if (!record) {
-      return res.status(404).json({ msg: 'Record not found' });
+        // Clean up the response by removing the code block for display
+        let cleanResponse = assistantResponse;
+        if (chartConfig) {
+            // Remove the code block from the response text to avoid duplication
+            cleanResponse = assistantResponse.replace(/```json[\s\S]*?```/g, '')
+                           .replace(/```[\s\S]*?```/g, '')
+                           .trim();
+            
+            // If the response is now empty, add a simple message
+            if (!cleanResponse) {
+                cleanResponse = "Here's your chart based on the data:";
+            }
+        }
+
+        res.json({ 
+            text: cleanResponse, 
+            chartConfig 
+        });
+    } catch (error) {
+        console.error('Error processing OpenAI request:', error);
+        res.status(500).json({ error: 'Failed to analyze data' });
     }
-    
-    // Format the data for visualization analysis
-    let dataDescription = 'Here is the data structure:\n';
-    if (record.data && record.data.length > 0) {
-      const headers = Object.keys(record.data[0]);
-      dataDescription += `Columns: ${headers.join(', ')}\n`;
-      dataDescription += `Number of rows: ${record.data.length}\n`;
-      
-      // Add sample data
-      dataDescription += '\nSample data (first 3 rows):\n';
-      record.data.slice(0, 3).forEach(row => {
-        dataDescription += JSON.stringify(row) + '\n';
-      });
-    }
-    
-    const prompt = `Based on this data structure, suggest appropriate visualization types and analysis methods. ${dataDescription}`;
-    
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
-      messages: [
-        { 
-          role: "system", 
-          content: "You are a data visualization expert. Suggest appropriate charts and visualizations based on the data structure provided." 
-        },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 1000
-    });
-    
-    res.json({ 
-      suggestions: completion.choices[0].message.content,
-      recordId
-    });
-    
-  } catch (err) {
-    console.error('Visualization API Error:', err);
-    res.status(500).json({ 
-      error: 'Server Error',
-      details: err.message 
-    });
-  }
 });
 
 module.exports = router; 

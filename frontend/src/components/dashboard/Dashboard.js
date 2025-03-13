@@ -23,11 +23,13 @@ const Dashboard = forwardRef(({
         setActiveCell({ row, col });
     };
 
-    const handleChartRequest = (chartType) => {
-        if (dataGridRef.current && activeCell) {
-            dataGridRef.current.createChart(chartType, activeCell);
-        }
-    };
+    // In Dashboard.jsx, update the handleChartRequest function
+const handleChartRequest = (chartConfig) => {
+    if (dataGridRef.current && activeCell) {
+        console.log("Creating chart with config:", chartConfig);
+        dataGridRef.current.createChart(chartConfig.type, activeCell, chartConfig);
+    }
+};
 
     // Add format handling function
     const handleFormatChange = (type, value) => {
