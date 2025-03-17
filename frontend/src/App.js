@@ -216,31 +216,115 @@ function App() {
   const handleDataLoad = (file) => {
     if (!file) return;
 
-    if (file.name.endsWith('.csv')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target.result;
-        const rows = text.split('\n').map(row => row.split(','));
+    // Check if the file has already been parsed
+    if (file.parsedData) {
+        console.log("Using pre-parsed data");
         
         // Create a new sheet with the loaded data
         const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
         const newSheets = {
-          ...sheets,
-          [newSheetId]: {
-            id: newSheetId,
-            name: file.name.replace('.csv', ''),
-            data: rows,
-            activeCell: { row: 0, col: 0 },
-            cellFormats: {}
-          }
+            ...sheets,
+            [newSheetId]: {
+                id: newSheetId,
+                name: file.name.replace('.csv', '').replace('.xlsx', '').replace('.xls', ''),
+                data: file.parsedData,
+                activeCell: { row: 0, col: 0 },
+                cellFormats: {}
+            }
         };
         
         setSheets(newSheets);
         setActiveSheetId(newSheetId);
         pushState(newSheets);
-      };
-      reader.readAsText(file);
-    } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        return;
+    }
+
+    // Original file handling for non-pre-parsed files
+    if (file.name.endsWith('.csv')) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const text = e.target.result;
+            
+            // Try to use XLSX for CSV parsing
+            try {
+                const workbook = XLSX.read(text, { type: 'string' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+                // Create a new sheet with the loaded data
+                const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
+                const newSheets = {
+                    ...sheets,
+                    [newSheetId]: {
+                        id: newSheetId,
+                        name: file.name.replace('.csv', ''),
+                        data: rows,
+                        activeCell: { row: 0, col: 0 },
+                        cellFormats: {}
+                    }
+                };
+                
+                setSheets(newSheets);
+                setActiveSheetId(newSheetId);
+                pushState(newSheets);
+            } catch (error) {
+                console.error("XLSX CSV parsing failed:", error);
+                
+                // Fall back to original method
+                const rows = text.split('\n').map(row => {
+                    // Parse CSV with proper handling of quoted fields
+                    const result = [];
+                    let inQuotes = false;
+                    let currentField = '';
+                    
+                    for (let i = 0; i < row.length; i++) {
+                        const char = row[i];
+                        
+                        if (char === '"') {
+                            if (i + 1 < row.length && row[i + 1] === '"') {
+                                // Escaped quote
+                                currentField += '"';
+                                i++;
+                            } else {
+                                // Toggle quote mode
+                                inQuotes = !inQuotes;
+                            }
+                        } else if (char === ',' && !inQuotes) {
+                            // Field separator
+                            result.push(currentField);
+                            currentField = '';
+                        } else {
+                            // Regular character
+                            currentField += char;
+                        }
+                    }
+                    
+                    // Add the last field
+                    result.push(currentField);
+                    return result;
+                });
+                
+                // Create a new sheet with the loaded data
+                const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
+                const newSheets = {
+                    ...sheets,
+                    [newSheetId]: {
+                        id: newSheetId,
+                        name: file.name.replace('.csv', ''),
+                        data: rows,
+                        activeCell: { row: 0, col: 0 },
+                        cellFormats: {}
+                    }
+                };
+                
+                setSheets(newSheets);
+                setActiveSheetId(newSheetId);
+                pushState(newSheets);
+            }
+        };
+        reader.readAsText(file);
+    }else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
       const reader = new FileReader();
       reader.onload = (e) => {
         const data = e.target.result;

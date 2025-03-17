@@ -62,31 +62,25 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
         try {
             // Parse message to identify mentioned sheets
             const sheetsToInclude = new Set();
-            const targetSheetMatch = input.match(/draw\s+it\s+in\s+sheet\s*(\d+|[a-zA-Z]+)/i);
-            let explicitTargetSheetId = null;
-            
-            // Check for mentions of specific sheets
-            const sheetMentions = input.match(/sheet\s*(\d+|[a-zA-Z]+)/gi) || [];
+        
+            // Check for mentions of specific sheets by name or ID
+            const sheetMentions = input.match(/netflix|sheet\s*(\d+|[a-zA-Z_]+)/gi) || [];
+            console.log("Detected sheet mentions:", sheetMentions);
             
             // Find all referenced sheets
             for (const mention of sheetMentions) {
-                const sheetNumMatch = mention.match(/sheet\s*(\d+|[a-zA-Z]+)/i);
-                if (sheetNumMatch && sheetNumMatch[1]) {
-                    const mentionedSheet = sheetNumMatch[1].toLowerCase();
+                const mentionLower = mention.toLowerCase();
+                
+                // Find matching sheet by name or ID
+                for (const [id, sheet] of Object.entries(sheets)) {
+                    const sheetName = (sheet.name || '').toLowerCase();
                     
-                    // Find matching sheet by name or ID
-                    for (const [id, sheet] of Object.entries(sheets)) {
-                        const sheetName = (sheet.name || '').toLowerCase();
-                        if (sheetName.includes(mentionedSheet) || 
-                            id.toLowerCase().includes(mentionedSheet)) {
-                            sheetsToInclude.add(id);
-                            
-                            // If this is the target sheet for drawing
-                            if (targetSheetMatch && targetSheetMatch[0].includes(mention)) {
-                                explicitTargetSheetId = id;
-                            }
-                            break;
-                        }
+                    // Check if the mention matches sheet name or ID
+                    if (sheetName.includes(mentionLower) || 
+                        id.toLowerCase().includes(mentionLower)) {
+                        console.log(`Found sheet "${sheet.name}" (${id}) matching mention "${mention}"`);
+                        sheetsToInclude.add(id);
+                        break;
                     }
                 }
             }
@@ -94,6 +88,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
             // If no specific sheets mentioned, use active sheet
             if (sheetsToInclude.size === 0) {
                 sheetsToInclude.add(activeSheetId);
+                console.log(`No sheets mentioned, using active sheet: ${activeSheetId}`);
             }
             
             // Gather data from all mentioned sheets
@@ -101,20 +96,18 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
             sheetsToInclude.forEach(sheetId => {
                 if (sheets[sheetId] && sheets[sheetId].data) {
                     relevantData[sheetId] = sheets[sheetId].data;
+                    console.log(`Including data from sheet ${sheetId} (${sheets[sheetId].data.length} rows)`);
                 }
             });
             
-            console.log("Sending data from sheets:", 
-                Array.from(sheetsToInclude), 
-                "Target sheet:", explicitTargetSheetId || activeSheetId
-            );
+          
     
             const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/chat/analyze2`, {
                 message: input,
                 relevantData,       // Send data from all mentioned sheets
                 sheets,             // Send all sheet metadata 
                 activeSheetId,      // Current active sheet
-                explicitTargetSheetId // Explicitly mentioned target sheet
+                
             }, {
                 headers: {
                     'x-auth-token': token
@@ -131,7 +124,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
             setMessages(newMessages);
             
             if (chartConfig && onChartRequest) {
-                onChartRequest(chartConfig, sourceSheetId, targetSheetId || explicitTargetSheetId);
+                onChartRequest(chartConfig, sourceSheetId, targetSheetId );
             }
         } catch (error) {
             console.error('Error sending message:', error);

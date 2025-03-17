@@ -30,6 +30,7 @@ router.post('/analyze2', auth, async (req, res) => {
 When asked to create or show a chart:
 1. Analyze the provided data structure carefully
 2. Return a JSON response with the following structure:
+IMPORTANT: Do not include any comments inside the JSON response. Do not use // or /* */ style comments in the JSON data. Make sure the JSON is valid and complete.
 {
   "type": "bar", // The chart type: "bar", "line", "pie", "area", etc.
   "title": "Chart Title",
@@ -242,44 +243,63 @@ If the user mentions creating a chart in a specific sheet using data from anothe
         console.log("Assistant response:", assistantResponse);
         
         // Parse out the chart config
-        let chartConfig = null;
-        let sourceSheetId = null;
-        let targetSheetId = null;
+       // Parse out the chart config
+let chartConfig = null;
+let sourceSheetId = null;
+let targetSheetId = null;
+
+try {
+    // Look for JSON in the response
+    const jsonMatch = assistantResponse.match(/```json\s*([\s\S]*?)\s*```/);
+    if (jsonMatch && jsonMatch[1]) {
+        // Clean up any comments in the JSON before parsing
+        let jsonString = jsonMatch[1].trim();
+        // Remove any lines with comments (starting with //)
+        jsonString = jsonString.replace(/\/\/.*$/gm, "");
+        // Remove any trailing commas before ] or }
+        jsonString = jsonString.replace(/,(\s*[\]}])/g, "$1");
         
         try {
-            // Look for JSON in the response
-            const jsonMatch = assistantResponse.match(/```json\s*([\s\S]*?)\s*```/);
-            if (jsonMatch && jsonMatch[1]) {
-                chartConfig = JSON.parse(jsonMatch[1].trim());
-                console.log("Extracted chart config from code block:", chartConfig);
-            } else {
-                // Try to find JSON without code blocks
-                const jsonRegex = /\{[\s\S]*"type"[\s\S]*"data"[\s\S]*\}/g;
-                const possibleJson = assistantResponse.match(jsonRegex);
-                if (possibleJson) {
-                    try {
-                        chartConfig = JSON.parse(possibleJson[0]);
-                        console.log("Extracted chart config from text:", chartConfig);
-                    } catch (e) {
-                        console.error("Failed to parse JSON from text:", e);
-                    }
-                }
+            chartConfig = JSON.parse(jsonString);
+            console.log("Extracted chart config from code block:", chartConfig);
+        } catch (jsonError) {
+            console.error('Error parsing JSON from code block:', jsonError);
+            console.log('Problematic JSON string:', jsonString);
+        }
+    } else {
+        // Try to find JSON without code blocks
+        const jsonRegex = /\{[\s\S]*"type"[\s\S]*"data"[\s\S]*\}/g;
+        const possibleJson = assistantResponse.match(jsonRegex);
+        if (possibleJson) {
+            try {
+                // Clean up any comments in the JSON before parsing
+                let jsonString = possibleJson[0];
+                // Remove any lines with comments (starting with //)
+                jsonString = jsonString.replace(/\/\/.*$/gm, "");
+                // Remove any trailing commas before ] or }
+                jsonString = jsonString.replace(/,(\s*[\]}])/g, "$1");
+                
+                chartConfig = JSON.parse(jsonString);
+                console.log("Extracted chart config from text:", chartConfig);
+            } catch (e) {
+                console.error("Failed to parse JSON from text:", e);
+                console.log('Problematic JSON string:', possibleJson[0]);
             }
-            
-            // Extract source and target sheet IDs if present
-             if (chartConfig) {
-            sourceSheetId = chartConfig.sourceSheetId || 
-                (Object.keys(relevantData || {}).length === 1 ? Object.keys(relevantData)[0] : activeSheetId);
-            
-            targetSheetId = chartConfig.targetSheetId || explicitTargetSheetId || activeSheetId;
-            
-            // Remove these from the chart config
-            delete chartConfig.sourceSheetId;
-            delete chartConfig.targetSheetId;
         }
-        } catch (parseError) {
-            console.error('Error parsing chart config:', parseError);
-        }
+    }
+    
+    // Extract source and target sheet IDs if present
+    if (chartConfig) {
+        sourceSheetId = chartConfig.sourceSheetId || activeSheetId;
+        targetSheetId = chartConfig.targetSheetId || activeSheetId;
+        
+        // Remove these from the chart config as they'll be handled separately
+        delete chartConfig.sourceSheetId;
+        delete chartConfig.targetSheetId;
+    }
+} catch (parseError) {
+    console.error('Error parsing chart config:', parseError);
+}
 
         // Clean up the response by removing the code block for display
         let cleanResponse = assistantResponse;

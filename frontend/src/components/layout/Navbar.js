@@ -48,12 +48,48 @@ const Navbar = ({ sheets,
     const handleFileSelect = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        // Pass the file directly to onDataLoad, just like in InsertMenu
-        onDataLoad(file);
-        setShowFileMenu(false);
         
-        // Clear the input value to allow selecting the same file again
+        console.log(`Opening file: ${file.name}`);
+        
+        // For CSV files, we need to handle the parsing ourselves to fix the comma issue
+        if (file.name.endsWith('.csv')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target.result;
+                
+                // Use XLSX library for proper CSV parsing
+                try {
+                    console.log("Parsing CSV with XLSX library");
+                    const workbook = XLSX.read(content, { type: 'string' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                    
+                    console.log(`CSV parsed successfully with ${jsonData.length} rows`);
+                    
+                    // Create a fake file object with the parsed data
+                    const parsedFile = {
+                        name: file.name,
+                        parsedData: jsonData,
+                        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    };
+                    
+                    // Pass the pre-parsed file to onDataLoad
+                    onDataLoad(parsedFile);
+                } catch (error) {
+                    console.error("XLSX parsing failed:", error);
+                    
+                    // Fall back to original method if XLSX parsing fails
+                    onDataLoad(file);
+                }
+            };
+            reader.readAsText(file);
+        } else {
+            // For non-CSV files, use the standard method
+            onDataLoad(file);
+        }
+        
+        setShowFileMenu(false);
         e.target.value = '';
     };
 
