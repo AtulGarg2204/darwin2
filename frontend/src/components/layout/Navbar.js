@@ -6,7 +6,8 @@ import ViewMenu from '../menus/ViewMenu';
 import InsertMenu from '../menus/InsertMenu';
 import FormatMenu from '../menus/FormatMenu';
 
-const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad, showHeaders, setShowHeaders, showGridLines, setShowGridLines, zoomLevel, setZoomLevel, onFormatChange }) => {
+const Navbar = ({ sheets, 
+    activeSheetId, currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad, showHeaders, setShowHeaders, showGridLines, setShowGridLines, zoomLevel, setZoomLevel, onFormatChange }) => {
     
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileInputRef = useRef(null);
@@ -56,57 +57,79 @@ const Navbar = ({ currentData, setCurrentData, activeCell, undoHistory, redoHist
         e.target.value = '';
     };
 
-    const handleSave = () => {
-        if (!currentData || currentData.length === 0) {
-            alert('No data to save!');
-            return;
-        }
+   // Update the handleSave function to work with multiple sheets
+   const handleSave = () => {
+    if (!sheets || Object.keys(sheets).length === 0) {
+        alert('No data to save!');
+        return;
+    }
 
-        try {
-            const worksheet = XLSX.utils.aoa_to_sheet(currentData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-            XLSX.writeFile(workbook, 'spreadsheet.xlsx');
-            setShowFileMenu(false);
-        } catch (error) {
-            console.error('Error saving file:', error);
-            alert('Error saving file. Please try again.');
-        }
-    };
+    try {
+        // Create a new workbook
+        const workbook = XLSX.utils.book_new();
+        
+        // Add each sheet to the workbook
+        Object.values(sheets).forEach(sheet => {
+            const worksheet = XLSX.utils.aoa_to_sheet(sheet.data);
+            XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+        });
+        
+        // Write the workbook to a file
+        XLSX.writeFile(workbook, 'spreadsheet.xlsx');
+        setShowFileMenu(false);
+    } catch (error) {
+        console.error('Error saving file:', error);
+        alert('Error saving file. Please try again.');
+    }
+};
 
-    const handleSaveAs = () => {
-        if (!currentData || currentData.length === 0) {
-            alert('No data to save!');
-            return;
-        }
+// Update the handleSaveAs function
+const handleSaveAs = () => {
+    if (!sheets || Object.keys(sheets).length === 0) {
+        alert('No data to save!');
+        return;
+    }
 
-        const fileType = prompt('Enter file type (xlsx or csv):', 'xlsx');
-        if (!fileType) return;
+    const fileType = prompt('Enter file type (xlsx or csv):', 'xlsx');
+    if (!fileType) return;
 
-        const fileName = prompt('Enter file name:', 'spreadsheet');
-        if (!fileName) return;
+    const fileName = prompt('Enter file name:', 'spreadsheet');
+    if (!fileName) return;
 
-        try {
-            const worksheet = XLSX.utils.aoa_to_sheet(currentData);
-            const workbook = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-
-            if (fileType.toLowerCase() === 'csv') {
-                const csv = XLSX.utils.sheet_to_csv(worksheet);
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = `${fileName}.csv`;
-                link.click();
-            } else {
-                XLSX.writeFile(workbook, `${fileName}.xlsx`);
+    try {
+        if (fileType.toLowerCase() === 'csv') {
+            // For CSV, only save the active sheet
+            const activeSheet = sheets[activeSheetId];
+            if (!activeSheet) {
+                alert('No active sheet found!');
+                return;
             }
-            setShowFileMenu(false);
-        } catch (error) {
-            console.error('Error saving file:', error);
-            alert('Error saving file. Please try again.');
+            
+            const worksheet = XLSX.utils.aoa_to_sheet(activeSheet.data);
+            const csv = XLSX.utils.sheet_to_csv(worksheet);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${fileName}.csv`;
+            link.click();
+        } else {
+            // For XLSX, save all sheets
+            const workbook = XLSX.utils.book_new();
+            
+            Object.values(sheets).forEach(sheet => {
+                const worksheet = XLSX.utils.aoa_to_sheet(sheet.data);
+                XLSX.utils.book_append_sheet(workbook, worksheet, sheet.name);
+            });
+            
+            XLSX.writeFile(workbook, `${fileName}.xlsx`);
         }
-    };
+        
+        setShowFileMenu(false);
+    } catch (error) {
+        console.error('Error saving file:', error);
+        alert('Error saving file. Please try again.');
+    }
+};
 
     // Edit menu handlers
     // const handleUndo = () => {

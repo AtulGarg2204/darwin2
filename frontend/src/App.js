@@ -1,3 +1,145 @@
+// import { useState, useRef } from 'react';
+// import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+// import Navbar from './components/layout/Navbar';
+// import Login from './components/auth/Login';
+// import Register from './components/auth/Register';
+// import Dashboard from './components/dashboard/Dashboard';
+// import HomePage from './components/home/HomePage';
+// import PrivateRoute from './components/layout/PrivateRoute';
+// import { AuthProvider } from './context/AuthContext';
+// import useSpreadsheetHistory from './hooks/useSpreadsheetHistory';
+// import './App.css';
+// import * as XLSX from 'xlsx';
+
+// function App() {
+//   const [currentData, setCurrentData] = useState([
+//     ['', '', '', ''],
+//     ['', '', '', ''],
+//     ['', '', '', '']
+//   ]);
+//   const [activeCell, setActiveCell] = useState({ row: 0, col: 0 });
+  
+//   // Add view settings state
+//   const [showHeaders, setShowHeaders] = useState(true);
+//   const [showGridLines, setShowGridLines] = useState(true);
+//   const [zoomLevel, setZoomLevel] = useState(100);
+
+//   const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(currentData);
+
+//   const handleDataChange = (newData) => {
+//     setCurrentData(newData);
+//     pushState(newData);
+//   };
+
+//   const handleNewFile = () => {
+//     // Create a new grid with MIN_VISIBLE_ROWS rows and MIN_VISIBLE_COLS columns
+//     const newData = Array(50).fill().map(() => Array(10).fill(''));
+//     handleDataChange(newData);
+//   };
+
+//   const handleDataLoad = (file) => {
+//     if (!file) return;
+
+//     if (file.name.endsWith('.csv')) {
+//       const reader = new FileReader();
+//       reader.onload = (e) => {
+//         const text = e.target.result;
+//         const rows = text.split('\n').map(row => row.split(','));
+//         setCurrentData(rows);
+//       };
+//       reader.readAsText(file);
+//     } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+//       const reader = new FileReader();
+//       reader.onload = (e) => {
+//         const data = e.target.result;
+//         const workbook = XLSX.read(data, { type: 'binary' });
+//         const sheetName = workbook.SheetNames[0];
+//         const worksheet = workbook.Sheets[sheetName];
+//         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+//         setCurrentData(jsonData);
+//       };
+//       reader.readAsBinaryString(file);
+//     }
+//   };
+
+//   const handleUndo = () => {
+//     const previousState = undo();
+//     if (previousState) {
+//       setCurrentData(previousState);
+//     }
+//   };
+
+//   const handleRedo = () => {
+//     const nextState = redo();
+//     if (nextState) {
+//       setCurrentData(nextState);
+//     }
+//   };
+
+//   const handleFormatChange = (type, value) => {
+//     // Pass the formatting function to Dashboard
+//     if (dashboardRef.current) {
+//       dashboardRef.current.handleFormatChange(type, value);
+//     }
+//   };
+
+//   const dashboardRef = useRef(null);
+
+//   return (
+//     <AuthProvider>
+//       <Router>
+//         <div className="flex flex-col h-screen">
+//           <Navbar 
+//             currentData={currentData}
+//             setCurrentData={setCurrentData}
+//             activeCell={activeCell}
+//             undoHistory={handleUndo}
+//             redoHistory={handleRedo}
+//             canUndo={canUndo}
+//             canRedo={canRedo}
+//             onNewFile={handleNewFile}
+//             onDataLoad={handleDataLoad}
+//             // Add view props
+//             showHeaders={showHeaders}
+//             setShowHeaders={setShowHeaders}
+//             showGridLines={showGridLines}
+//             setShowGridLines={setShowGridLines}
+//             zoomLevel={zoomLevel}
+//             setZoomLevel={setZoomLevel}
+//             onFormatChange={handleFormatChange}
+//           />
+//           <div className="flex-1 overflow-hidden">
+//             <Routes>
+//               <Route path="/login" element={<Login />} />
+//               <Route path="/register" element={<Register />} />
+//               <Route path="/" element={<HomePage />} />
+//               <Route 
+//                 path="/dashboard" 
+//                 element={
+//                   <PrivateRoute>
+//                     <Dashboard 
+//                       ref={dashboardRef}
+//                       currentData={currentData} 
+//                       setCurrentData={setCurrentData}
+//                       activeCell={activeCell}
+//                       setActiveCell={setActiveCell}
+//                       // Add view props
+//                       showHeaders={showHeaders}
+//                       showGridLines={showGridLines}
+//                       zoomLevel={zoomLevel}
+//                     />
+//                   </PrivateRoute>
+//                 } 
+//               />
+//             </Routes>
+//           </div>
+//         </div>
+//       </Router>
+//     </AuthProvider>
+//   );
+// }
+
+// export default App;
 import { useState, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
@@ -12,31 +154,65 @@ import './App.css';
 import * as XLSX from 'xlsx';
 
 function App() {
-  const [currentData, setCurrentData] = useState([
-    ['', '', '', ''],
-    ['', '', '', ''],
-    ['', '', '', '']
-  ]);
-  const [activeCell, setActiveCell] = useState({ row: 0, col: 0 });
+  // Replace single sheet data with multiple sheets structure
+  const [sheets, setSheets] = useState({
+    sheet1: {
+      id: 'sheet1',
+      name: 'Sheet 1',
+      data: [
+        ['', '', '', ''],
+        ['', '', '', ''],
+        ['', '', '', '']
+      ],
+      activeCell: { row: 0, col: 0 },
+      cellFormats: {} // Store cell formatting per sheet
+    }
+  });
   
-  // Add view settings state
+  // Track the active sheet
+  const [activeSheetId, setActiveSheetId] = useState('sheet1');
+  
+  // View settings remain the same
   const [showHeaders, setShowHeaders] = useState(true);
   const [showGridLines, setShowGridLines] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
 
-  const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(currentData);
+  // Update history hook to work with sheets object
+  const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(sheets);
 
-  const handleDataChange = (newData) => {
-    setCurrentData(newData);
-    pushState(newData);
+  const dashboardRef = useRef(null);
+
+  // Update data change handler to work with sheets
+  const handleUpdateSheetData = (newSheets) => {
+    setSheets(newSheets);
+    pushState(newSheets);
   };
 
+
+  // Update active cell in current sheet
+  const setActiveCell = (cell) => {
+    const updatedSheets = { ...sheets };
+    updatedSheets[activeSheetId].activeCell = cell;
+    setSheets(updatedSheets);
+  };
+
+  // New file now creates a single sheet
   const handleNewFile = () => {
-    // Create a new grid with MIN_VISIBLE_ROWS rows and MIN_VISIBLE_COLS columns
-    const newData = Array(50).fill().map(() => Array(10).fill(''));
-    handleDataChange(newData);
+    const newSheets = {
+      sheet1: {
+        id: 'sheet1',
+        name: 'Sheet 1',
+        data: Array(50).fill().map(() => Array(10).fill('')),
+        activeCell: { row: 0, col: 0 },
+        cellFormats: {}
+      }
+    };
+    setSheets(newSheets);
+    setActiveSheetId('sheet1');
+    pushState(newSheets);
   };
 
+  // Update file loading to work with sheets
   const handleDataLoad = (file) => {
     if (!file) return;
 
@@ -45,7 +221,23 @@ function App() {
       reader.onload = (e) => {
         const text = e.target.result;
         const rows = text.split('\n').map(row => row.split(','));
-        setCurrentData(rows);
+        
+        // Create a new sheet with the loaded data
+        const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
+        const newSheets = {
+          ...sheets,
+          [newSheetId]: {
+            id: newSheetId,
+            name: file.name.replace('.csv', ''),
+            data: rows,
+            activeCell: { row: 0, col: 0 },
+            cellFormats: {}
+          }
+        };
+        
+        setSheets(newSheets);
+        setActiveSheetId(newSheetId);
+        pushState(newSheets);
       };
       reader.readAsText(file);
     } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
@@ -53,27 +245,102 @@ function App() {
       reader.onload = (e) => {
         const data = e.target.result;
         const workbook = XLSX.read(data, { type: 'binary' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-        setCurrentData(jsonData);
+        
+        // Create a new sheet for each worksheet in the Excel file
+        const newSheets = { ...sheets };
+        
+        workbook.SheetNames.forEach((sheetName, index) => {
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          
+          const newSheetId = `sheet${Object.keys(sheets).length + index + 1}`;
+          newSheets[newSheetId] = {
+            id: newSheetId,
+            name: sheetName,
+            data: jsonData,
+            activeCell: { row: 0, col: 0 },
+            cellFormats: {}
+          };
+        });
+        
+        setSheets(newSheets);
+        setActiveSheetId(Object.keys(newSheets)[Object.keys(sheets).length]); // Set to first new sheet
+        pushState(newSheets);
       };
       reader.readAsBinaryString(file);
     }
   };
 
+  // Update undo/redo to work with sheets
   const handleUndo = () => {
     const previousState = undo();
     if (previousState) {
-      setCurrentData(previousState);
+      setSheets(previousState);
+      // Ensure active sheet ID is valid
+      if (!previousState[activeSheetId]) {
+        setActiveSheetId(Object.keys(previousState)[0]);
+      }
     }
   };
 
   const handleRedo = () => {
     const nextState = redo();
     if (nextState) {
-      setCurrentData(nextState);
+      setSheets(nextState);
+      // Ensure active sheet ID is valid
+      if (!nextState[activeSheetId]) {
+        setActiveSheetId(Object.keys(nextState)[0]);
+      }
     }
+  };
+
+  // Add sheet management functions
+  const handleAddSheet = () => {
+    const sheetCount = Object.keys(sheets).length + 1;
+    const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique IDs
+    
+    const newSheets = {
+      ...sheets,
+      [newSheetId]: {
+        id: newSheetId,
+        name: `Sheet ${sheetCount}`,
+        data: Array(50).fill().map(() => Array(10).fill('')),
+        activeCell: { row: 0, col: 0 },
+        cellFormats: {}
+      }
+    };
+    
+    setSheets(newSheets);
+    setActiveSheetId(newSheetId);
+    pushState(newSheets);
+  };
+
+  const handleSheetChange = (sheetId) => {
+    setActiveSheetId(sheetId);
+  };
+
+  const handleRenameSheet = (sheetId, newName) => {
+    const updatedSheets = { ...sheets };
+    updatedSheets[sheetId].name = newName;
+    setSheets(updatedSheets);
+    pushState(updatedSheets);
+  };
+
+  const handleDeleteSheet = (sheetId) => {
+    if (Object.keys(sheets).length <= 1) {
+      return; // Don't delete the last sheet
+    }
+    
+    const newSheets = { ...sheets };
+    delete newSheets[sheetId];
+    
+    // Set a new active sheet if the deleted one was active
+    if (activeSheetId === sheetId) {
+      setActiveSheetId(Object.keys(newSheets)[0]);
+    }
+    
+    setSheets(newSheets);
+    pushState(newSheets);
   };
 
   const handleFormatChange = (type, value) => {
@@ -83,23 +350,19 @@ function App() {
     }
   };
 
-  const dashboardRef = useRef(null);
-
   return (
     <AuthProvider>
       <Router>
         <div className="flex flex-col h-screen">
           <Navbar 
-            currentData={currentData}
-            setCurrentData={setCurrentData}
-            activeCell={activeCell}
+            sheets={sheets}
+            activeSheetId={activeSheetId}
             undoHistory={handleUndo}
             redoHistory={handleRedo}
             canUndo={canUndo}
             canRedo={canRedo}
             onNewFile={handleNewFile}
             onDataLoad={handleDataLoad}
-            // Add view props
             showHeaders={showHeaders}
             setShowHeaders={setShowHeaders}
             showGridLines={showGridLines}
@@ -119,11 +382,14 @@ function App() {
                   <PrivateRoute>
                     <Dashboard 
                       ref={dashboardRef}
-                      currentData={currentData} 
-                      setCurrentData={setCurrentData}
-                      activeCell={activeCell}
+                      sheets={sheets}
+                      activeSheetId={activeSheetId}
+                      onSheetChange={handleSheetChange}
+                      onAddSheet={handleAddSheet}
+                      onDeleteSheet={handleDeleteSheet}
+                      onRenameSheet={handleRenameSheet}
+                      onUpdateSheetData={handleUpdateSheetData}
                       setActiveCell={setActiveCell}
-                      // Add view props
                       showHeaders={showHeaders}
                       showGridLines={showGridLines}
                       zoomLevel={zoomLevel}

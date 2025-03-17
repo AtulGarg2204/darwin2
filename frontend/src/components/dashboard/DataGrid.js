@@ -358,12 +358,30 @@ const DataGrid = forwardRef(({
         });
     };
 
-    // Add this effect to update formula results when data changes
+    // // Add this effect to update formula results when data changes
+    // useEffect(() => {
+    //     const newData = [...data];
+    //     let hasChanges = false;
+
+    //     Object.entries(formulas).forEach(([key, formula]) => {
+    //         const [row, col] = key.split('-').map(Number);
+    //         const result = evaluateFormula(formula);
+    //         if (newData[row]?.[col] !== result) {
+    //             if (!newData[row]) newData[row] = [];
+    //             newData[row][col] = result;
+    //             hasChanges = true;
+    //         }
+    //     });
+
+    //     if (hasChanges) {
+    //         setData(newData);
+    //     }
+    // }, [data, formulas,setData,evaluateFormula]);
     useEffect(() => {
         const newData = [...data];
         let hasChanges = false;
-
-        Object.entries(formulas).forEach(([key, formula]) => {
+    
+        Object.entries(formulas || {}).forEach(([key, formula]) => {
             const [row, col] = key.split('-').map(Number);
             const result = evaluateFormula(formula);
             if (newData[row]?.[col] !== result) {
@@ -372,11 +390,11 @@ const DataGrid = forwardRef(({
                 hasChanges = true;
             }
         });
-
+    
         if (hasChanges) {
             setData(newData);
         }
-    }, [data, formulas,setData,evaluateFormula]);
+    }, [data, formulas, setData, evaluateFormula]);
 
     // Add keyboard navigation with expansion capability
     useEffect(() => {
@@ -447,7 +465,7 @@ const DataGrid = forwardRef(({
 
     // Handle mouse events for selection
     const handleMouseDown = (rowIndex, colIndex, e) => {
-        console.log('Mouse down at:', rowIndex, colIndex);
+     
         setIsSelecting(true);
         setSelectionStart({ row: rowIndex, col: colIndex });
         setSelectionEnd({ row: rowIndex, col: colIndex });
@@ -456,13 +474,13 @@ const DataGrid = forwardRef(({
 
     const handleMouseMove = (rowIndex, colIndex) => {
         if (isSelecting) {
-            console.log('Mouse move at:', rowIndex, colIndex);
+          
             setSelectionEnd({ row: rowIndex, col: colIndex });
         }
     };
 
     const handleMouseUp = () => {
-        console.log('Mouse up, selection:', selectionStart, selectionEnd);
+       
         setIsSelecting(false);
     };
 
@@ -482,7 +500,7 @@ const DataGrid = forwardRef(({
     // Create stable callback functions for clipboard operations
     const handleCopyCallback = useCallback((e) => {
         e.preventDefault();
-        console.log('Copy event triggered');
+
         
         // If no selection, use active cell
         const startRow = selectionStart ? Math.min(selectionStart.row, selectionEnd.row) : activeCell.row;
@@ -490,7 +508,7 @@ const DataGrid = forwardRef(({
         const startCol = selectionStart ? Math.min(selectionStart.col, selectionEnd.col) : activeCell.col;
         const endCol = selectionStart ? Math.max(selectionStart.col, selectionEnd.col) : activeCell.col;
 
-        console.log('Copying from:', { startRow, endRow, startCol, endCol });
+  
 
         const selectedData = [];
         for (let i = startRow; i <= endRow; i++) {
@@ -501,7 +519,7 @@ const DataGrid = forwardRef(({
             selectedData.push(row.join('\t'));
         }
         const copyText = selectedData.join('\n');
-        console.log('Copying data:', copyText);
+
         navigator.clipboard.writeText(copyText).catch(err => {
             console.error('Failed to copy:', err);
             // Fallback
@@ -511,7 +529,7 @@ const DataGrid = forwardRef(({
 
     const handleCutCallback = useCallback((e) => {
         e.preventDefault();
-        console.log('Cut event triggered');
+    
         
         handleCopyCallback(e);
         
@@ -534,10 +552,10 @@ const DataGrid = forwardRef(({
 
     const handlePasteCallback = useCallback(async (e) => {
         e.preventDefault();
-        console.log('Paste event triggered');
+      
         
         if (!activeCell) {
-            console.log('No active cell for paste');
+           
             return;
         }
 
@@ -846,18 +864,52 @@ const DataGrid = forwardRef(({
     // };
     
     // Function to create chart
+    // const createChart = (type = 'bar', startCell = activeCell, chartConfig = null) => {
+    //     if (!startCell) return;
+        
+    //     const newData = [...data];
+    //     console.log(newData,"NEW DATA IS ");
+    //     console.log("Creating chart with config:", chartConfig);
+        
+    //     // Ensure we have enough rows and columns for the chart
+    //     while (newData.length <= startCell.row + CHART_SIZE.height) {
+    //         newData.push(Array(newData[0]?.length || 1).fill(''));
+    //     }
+    
+    //     // Mark the chart area
+    //     for (let i = 0; i < CHART_SIZE.height; i++) {
+    //         for (let j = 0; j < CHART_SIZE.width; j++) {
+    //             if (!newData[startCell.row + i]) {
+    //                 newData[startCell.row + i] = [];
+    //             }
+    //             if (i === 0 && j === 0) {
+    //                 // Store chart configuration in the cell
+    //                 newData[startCell.row][startCell.col] = `CHART:${JSON.stringify(chartConfig)}:START`;
+    //             } else {
+    //                 newData[startCell.row + i][startCell.col + j] = 'CHART:OCCUPIED';
+    //             }
+    //         }
+    //     }
+        
+    //     setData(newData);
+    // };
     const createChart = (type = 'bar', startCell = activeCell, chartConfig = null) => {
         if (!startCell) return;
         
-        const newData = [...data];
-        console.log(newData,"NEW DATA IS ");
         console.log("Creating chart with config:", chartConfig);
+        console.log("Chart data length:", chartConfig?.data?.length || 0);
+        console.log("Sample data:", chartConfig?.data?.slice(0, 3));
+        
+        const newData = [...data];
         
         // Ensure we have enough rows and columns for the chart
         while (newData.length <= startCell.row + CHART_SIZE.height) {
             newData.push(Array(newData[0]?.length || 1).fill(''));
         }
     
+        // Make ANOTHER deep copy to ensure nothing modifies our chart data
+        const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
+        
         // Mark the chart area
         for (let i = 0; i < CHART_SIZE.height; i++) {
             for (let j = 0; j < CHART_SIZE.width; j++) {
@@ -866,7 +918,13 @@ const DataGrid = forwardRef(({
                 }
                 if (i === 0 && j === 0) {
                     // Store chart configuration in the cell
-                    newData[startCell.row][startCell.col] = `CHART:${JSON.stringify(chartConfig)}:START`;
+                    const chartConfigString = JSON.stringify(chartConfigCopy);
+                    console.log("Storing chart with data length:", 
+                        chartConfigCopy?.data?.length || 0);
+                    console.log("Storing chart config string length:", 
+                        chartConfigString.length);
+                        
+                    newData[startCell.row][startCell.col] = `CHART:${chartConfigString}:START`;
                 } else {
                     newData[startCell.row + i][startCell.col + j] = 'CHART:OCCUPIED';
                 }
@@ -911,6 +969,7 @@ const CustomizedTreemapContent = (props) => {
     // Function to render chart
     const renderChart = (type, startCell, chartConfig = null) => {
         console.log("Rendering chart with config:", chartConfig);
+        console.log("Chart data length:", chartConfig?.data?.length || 0);
         
         // Create default style for the chart container
         const chartStyle = {
@@ -924,11 +983,16 @@ const CustomizedTreemapContent = (props) => {
             zIndex: 10
         };
     
-        // If no chart config is provided or it's not in the expected format, use default behavior
+        // Validate chart config
         if (!chartConfig || !chartConfig.data || !chartConfig.type) {
-            console.log("Using default chart rendering, no valid config provided");
-            // Your existing fallback code for rendering charts
-            return <div style={chartStyle}>Invalid chart configuration</div>;
+            console.error("Invalid chart configuration:", chartConfig);
+            return <div style={chartStyle} className="p-4">Invalid chart configuration</div>;
+        }
+        
+        // Validate chart data
+        if (!Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
+            console.error("Chart data is missing or empty:", chartConfig.data);
+            return <div style={chartStyle} className="p-4">Chart data is missing or empty</div>;
         }
         
         // Extract data and settings from the chart config
@@ -937,8 +1001,13 @@ const CustomizedTreemapContent = (props) => {
         const chartColors = chartConfig.colors || ['#8884d8', '#82ca9d', '#ffc658', '#ff8042'];
         
         // Get data keys (excluding 'name')
-        const dataKeys = Object.keys(chartData[0]).filter(key => key !== 'name');
-        console.log("Chart data keys:", dataKeys);
+        const dataKeys = Object.keys(chartData[0] || {}).filter(key => key !== 'name');
+        
+        if (dataKeys.length === 0) {
+            console.error("No data keys found in chart data");
+            return <div style={chartStyle} className="p-4">No data values found for chart</div>;
+        }
+       
         
         // Render the appropriate chart type
         switch (chartConfig.type.toLowerCase()) {
@@ -961,7 +1030,7 @@ const CustomizedTreemapContent = (props) => {
                                         name={key}
                                         label={{
                                 position: 'top',
-                                formatter: (value) => value.toFixed(1),
+                               formatter: (value) => (typeof value === 'number' ? value.toFixed(1) : value),
                                 fill: '#666',
                                 fontSize: 12
                             }}
@@ -1380,7 +1449,7 @@ const CustomizedTreemapContent = (props) => {
             );
             
             default:
-                console.log(`Unsupported chart type: ${chartConfig.type}, falling back to bar chart`);
+              
                 return (
                     <div style={chartStyle}>
                         <h3 className="text-sm font-semibold m-2">{chartTitle} (Bar Chart)</h3>
@@ -1497,23 +1566,35 @@ const CustomizedTreemapContent = (props) => {
                 userSelect: 'none'
             }}
         >
-            {typeof row[colIndex] === 'string' && row[colIndex]?.startsWith('CHART:') ? (
-                row[colIndex].includes(':START') && (() => {
-                    const parts = row[colIndex].split(':');
-                    try {
-                        // Extract the chart configuration from the cell value
-                        const chartConfigStr = parts.slice(1, -1).join(':');
-                        const chartConfig = JSON.parse(chartConfigStr);
-                        console.log("Cell contains chart config:", chartConfig);
-                        
-                        // Render the chart with the extracted configuration
-                        return renderChart(chartConfig.type || 'bar', { row: rowIndex, col: colIndex }, chartConfig);
-                    } catch (error) {
-                        console.error("Error parsing chart config from cell:", error);
-                        return <div>Error rendering chart</div>;
-                    }
-                })()
-            ) : (
+           {typeof row[colIndex] === 'string' && row[colIndex]?.startsWith('CHART:') ? (
+    row[colIndex].includes(':START') && (() => {
+        const parts = row[colIndex].split(':');
+        try {
+            // Extract the chart configuration from the cell value
+            const chartConfigStr = parts.slice(1, -1).join(':');
+            console.log("Extracted chart config string length:", chartConfigStr.length);
+            
+            const chartConfig = JSON.parse(chartConfigStr);
+            console.log("Extracted chart data length:", chartConfig?.data?.length || 0);
+            
+            // Validate the chart data
+            if (!chartConfig.data || !Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
+                console.error("Invalid chart data extracted:", chartConfig.data);
+                return <div className="p-4 bg-red-50 text-red-700">
+                    Chart data is missing or invalid
+                </div>;
+            }
+            
+            // Render the chart with the extracted configuration
+            return renderChart(chartConfig.type || 'bar', { row: rowIndex, col: colIndex }, chartConfig);
+        } catch (error) {
+            console.error("Error parsing chart config from cell:", error);
+            return <div className="p-4 bg-red-50 text-red-700">
+                Error parsing chart: {error.message}
+            </div>;
+        }
+    })()
+) : (
                 <input
                     type="text"
                     value={
