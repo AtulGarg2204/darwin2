@@ -10,7 +10,7 @@ connectDB();
 
 // CORS Configuration
 app.use(cors({
-    origin: ['https://darwin12.netlify.app', 'http://localhost:3000'],
+    origin: ['https://darwin12.netlify.app', 'https://darwin2.onrender.com','http://localhost:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
