@@ -1200,61 +1200,49 @@ const CustomizedTreemapContent = (props) => {
             );
             
             case 'scatter':
-                return (
-                    <div style={chartStyle}>
-                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                        <ResponsiveContainer width="100%" height="90%">
-                            <ScatterChart>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis 
-                                    type="number" 
-                                    dataKey={dataKeys[0]} 
-                                    name={dataKeys[0]}
-                                    domain={['auto', 'auto']}
-                                    label={{ 
-                                        value: dataKeys[0], 
-                                        position: 'bottom',
-                                        style: { textAnchor: 'middle' }
-                                    }}
-                                />
-                                <YAxis 
-                                    type="number" 
-                                    dataKey={dataKeys[1]} 
-                                    name={dataKeys[1]}
-                                    label={{ 
-                                        value: dataKeys[1], 
-                                        angle: -90, 
-                                        position: 'insideLeft',
-                                        style: { textAnchor: 'middle' }
-                                        
-                                    }}
-                                />
-                                <Tooltip 
-                                    cursor={{ strokeDasharray: '3 3' }}
-                                    formatter={(value, name) => [value, name]}
-                                    labelFormatter={(_, payload) => {
-                                        if (payload && payload.length > 0) {
-                                            return payload[0].payload.name;
-                                        }
-                                        return '';
-                                    }}
-                                />
-                                <Legend />
-                                <Scatter
-                                    name={`${dataKeys[0]} vs ${dataKeys[1]}`}
-                                    data={chartData}
-                                    fill={chartColors[0]}
-                                    label={{ 
-                            dataKey: 'name',
-                            position: 'top',
-                            fill: '#666',
-                            fontSize: 10
+    return (
+        <div style={chartStyle}>
+            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+            <ResponsiveContainer width="100%" height="90%">
+                <ScatterChart>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                        type="category"
+                        dataKey="year"
+                        name="Year"
+                        allowDuplicatedCategory={false}
+                    />
+                    <YAxis 
+                        type="number" 
+                        dataKey="sales"
+                        name="Sales"
+                    />
+                    <Tooltip 
+                        cursor={{ strokeDasharray: '3 3' }}
+                        formatter={(value, name) => {
+                            return typeof value === 'number' ? 
+                                [value.toFixed(2), name] : [value, name];
                         }}
-                                />
-                            </ScatterChart>
-                        </ResponsiveContainer>
-                    </div>
-                );
+                        labelFormatter={(value, payload) => {
+                            if (payload && payload.length > 0) {
+                                return `${payload[0].payload.subCategory} (${value})`;
+                            }
+                            return value;
+                        }}
+                    />
+                    <Legend />
+                    {Array.from(new Set(chartData.map(item => item.subCategory))).map((category, index) => (
+                        <Scatter
+                            key={category}
+                            name={category}
+                            data={chartData.filter(item => item.subCategory === category)}
+                            fill={chartColors[index % chartColors.length]}
+                        />
+                    ))}
+                </ScatterChart>
+            </ResponsiveContainer>
+        </div>
+    );
             
         case 'funnel':
             // For funnel charts, we'll use a simple Bar chart with some styling

@@ -252,27 +252,25 @@ const Dashboard = forwardRef(({
     //         dataGridRef.current.createChart(chartConfig.type, activeSheet.activeCell, chartConfig);
     //     }
     // };
-
     const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId) => {
         if (!dataGridRef.current) return;
         
-        console.log("Creating chart with config:", chartConfig);
-        console.log("Chart data length:", chartConfig?.data?.length || 0);
-        console.log("Source sheet:", sourceSheetId, "Target sheet:", targetSheetId);
+        console.log("Creating chart:", {
+            type: chartConfig?.type,
+            dataPoints: chartConfig?.data?.length,
+            source: sourceSheetId || activeSheetId,
+            target: targetSheetId || activeSheetId
+        });
         
-        // Default to active sheet if not specified
-       
-        const finalTargetId = targetSheetId || activeSheetId;
-        
-        // IMPORTANT: Create a deep copy of the chart configuration
-        // to ensure it doesn't get lost or modified during state transitions
+        // Create a deep copy of the chart configuration
         const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
         
-        console.log("Chart data copy length:", chartConfigCopy?.data?.length || 0);
+        // Determine final source and target sheet IDs
+        const finalSourceId = sourceSheetId || activeSheetId;
+        const finalTargetId = targetSheetId || activeSheetId;
         
         // If the target sheet is different from active, switch to it with a timeout
         if (finalTargetId !== activeSheetId) {
-            // Save the chart config in a ref or state to preserve it during sheet switch
             // First switch to the target sheet
             onSheetChange(finalTargetId);
             
@@ -282,10 +280,6 @@ const Dashboard = forwardRef(({
                     // Get target cell in the new sheet
                     const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
                     
-                    // Log to verify the chart data is still intact
-                    console.log("After sheet switch - chart data length:", 
-                        chartConfigCopy?.data?.length || 0);
-                    
                     // Create the chart with the preserved configuration
                     dataGridRef.current.createChart(
                         chartConfigCopy.type, 
@@ -293,7 +287,7 @@ const Dashboard = forwardRef(({
                         chartConfigCopy
                     );
                 }
-            }, 500); // Increased timeout for reliable sheet switching
+            }, 500); // Timeout for reliable sheet switching
         } else {
             // Same sheet, create chart immediately
             const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };

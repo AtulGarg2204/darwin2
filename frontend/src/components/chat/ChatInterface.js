@@ -10,6 +10,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
     const [loading, setLoading] = useState(false);
     const { token } = useAuth();
     
+
     // const handleSendMessage = async (e) => {
     //     e.preventDefault();
     //     if (!input.trim()) return;
@@ -18,28 +19,19 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
     //     setMessages([...messages, { sender: 'user', text: input }]);
 
     //     try {
-    //         console.log("Sending data to API:", {
-    //             message: input,
-    //             dataLength: data?.length || 0,
-    //             sampleData: data?.slice(0, 2) || []
-    //         });
-
     //         const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/chat/analyze2`, {
     //             message: input,
-    //             data
+    //             data,           // Current sheet data
+    //             sheets,         // All sheets
+    //             activeSheetId   // Current sheet ID
     //         }, {
     //             headers: {
     //                 'x-auth-token': token
     //             }
     //         });
 
-    //         const { data: { text, chartConfig } } = response;
-    //         console.log("Received response from API:", {
-    //             text,
-    //             chartConfig
-    //         });
+    //         const { data: { text, chartConfig, sourceSheetId, targetSheetId } } = response;
             
-    //         // Create a new messages array with the response
     //         const newMessages = [
     //             ...messages, 
     //             { sender: 'user', text: input }, 
@@ -47,10 +39,10 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
     //         ];
     //         setMessages(newMessages);
             
-    //         // If we have a chart config and an onChartRequest function, create the chart
-    //         if (chartConfig && onChartRequest && activeCell) {
+    //         if (chartConfig && onChartRequest) {
     //             console.log("Passing chart config to parent component:", chartConfig);
-    //             onChartRequest(chartConfig);
+    //             // Pass source and target sheet IDs
+    //             onChartRequest(chartConfig, sourceSheetId, targetSheetId);
     //         }
     //     } catch (error) {
     //         console.error('Error sending message:', error);
@@ -63,22 +55,72 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!input.trim()) return;
-
+    
         setLoading(true);
         setMessages([...messages, { sender: 'user', text: input }]);
-
+    
         try {
+            // Parse message to identify mentioned sheets
+            const sheetsToInclude = new Set();
+            const targetSheetMatch = input.match(/draw\s+it\s+in\s+sheet\s*(\d+|[a-zA-Z]+)/i);
+            let explicitTargetSheetId = null;
+            
+            // Check for mentions of specific sheets
+            const sheetMentions = input.match(/sheet\s*(\d+|[a-zA-Z]+)/gi) || [];
+            
+            // Find all referenced sheets
+            for (const mention of sheetMentions) {
+                const sheetNumMatch = mention.match(/sheet\s*(\d+|[a-zA-Z]+)/i);
+                if (sheetNumMatch && sheetNumMatch[1]) {
+                    const mentionedSheet = sheetNumMatch[1].toLowerCase();
+                    
+                    // Find matching sheet by name or ID
+                    for (const [id, sheet] of Object.entries(sheets)) {
+                        const sheetName = (sheet.name || '').toLowerCase();
+                        if (sheetName.includes(mentionedSheet) || 
+                            id.toLowerCase().includes(mentionedSheet)) {
+                            sheetsToInclude.add(id);
+                            
+                            // If this is the target sheet for drawing
+                            if (targetSheetMatch && targetSheetMatch[0].includes(mention)) {
+                                explicitTargetSheetId = id;
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // If no specific sheets mentioned, use active sheet
+            if (sheetsToInclude.size === 0) {
+                sheetsToInclude.add(activeSheetId);
+            }
+            
+            // Gather data from all mentioned sheets
+            const relevantData = {};
+            sheetsToInclude.forEach(sheetId => {
+                if (sheets[sheetId] && sheets[sheetId].data) {
+                    relevantData[sheetId] = sheets[sheetId].data;
+                }
+            });
+            
+            console.log("Sending data from sheets:", 
+                Array.from(sheetsToInclude), 
+                "Target sheet:", explicitTargetSheetId || activeSheetId
+            );
+    
             const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/chat/analyze2`, {
                 message: input,
-                data,           // Current sheet data
-                sheets,         // All sheets
-                activeSheetId   // Current sheet ID
+                relevantData,       // Send data from all mentioned sheets
+                sheets,             // Send all sheet metadata 
+                activeSheetId,      // Current active sheet
+                explicitTargetSheetId // Explicitly mentioned target sheet
             }, {
                 headers: {
                     'x-auth-token': token
                 }
             });
-
+    
             const { data: { text, chartConfig, sourceSheetId, targetSheetId } } = response;
             
             const newMessages = [
@@ -89,13 +131,15 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest,sheets,
             setMessages(newMessages);
             
             if (chartConfig && onChartRequest) {
-                console.log("Passing chart config to parent component:", chartConfig);
-                // Pass source and target sheet IDs
-                onChartRequest(chartConfig, sourceSheetId, targetSheetId);
+                onChartRequest(chartConfig, sourceSheetId, targetSheetId || explicitTargetSheetId);
             }
         } catch (error) {
             console.error('Error sending message:', error);
-            setMessages([...messages, { sender: 'user', text: input }, { sender: 'assistant', text: 'Sorry, something went wrong.' }]);
+            setMessages([
+                ...messages, 
+                { sender: 'user', text: input }, 
+                { sender: 'assistant', text: 'Sorry, something went wrong.' }
+            ]);
         } finally {
             setLoading(false);
             setInput('');
