@@ -266,7 +266,7 @@ const Dashboard = forwardRef(({
         const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
         
         // Determine final source and target sheet IDs
-        const finalSourceId = sourceSheetId || activeSheetId;
+      
         const finalTargetId = targetSheetId || activeSheetId;
         
         // If the target sheet is different from active, switch to it with a timeout
