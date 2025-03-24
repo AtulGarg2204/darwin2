@@ -477,25 +477,33 @@ const Dashboard = forwardRef(({
                         />
                     </div>
 
-                    {/* Spreadsheet */}
                     <div className="flex-1 overflow-auto bg-white">
-                        <DataGrid 
-                            ref={dataGridRef}
-                            data={activeSheet?.data || []}
-                            setData={(newData) => {
-                                const updatedSheets = { ...sheets };
-                                updatedSheets[activeSheetId].data = newData;
-                                onUpdateSheetData(updatedSheets);
-                            }}
-                            activeCell={activeSheet?.activeCell}
-                            onCellClick={handleCellClick}
-                            showHeaders={showHeaders}
-                            showGridLines={showGridLines}
-                            zoomLevel={zoomLevel}
-                            cellFormats={activeSheet?.cellFormats || {}}
-                            formulas={activeSheet?.formulas || {}}
-                        />
-                    </div>
+                    <DataGrid 
+                        ref={dataGridRef}
+                        data={activeSheet?.data || []}
+                        setData={(newData) => {
+                            // Check if activeSheetId exists and is valid
+                            if (!activeSheetId || !sheets[activeSheetId]) {
+                                console.error('Cannot update data: active sheet not found', {
+                                    activeSheetId,
+                                    availableSheets: Object.keys(sheets)
+                                });
+                                return;
+                            }
+                            
+                            const updatedSheets = { ...sheets };
+                            updatedSheets[activeSheetId].data = newData;
+                            onUpdateSheetData(updatedSheets);
+                        }}
+                        activeCell={activeSheet?.activeCell}
+                        onCellClick={handleCellClick}
+                        showHeaders={showHeaders}
+                        showGridLines={showGridLines}
+                        zoomLevel={zoomLevel}
+                        cellFormats={activeSheet?.cellFormats || {}}
+                        formulas={activeSheet?.formulas || {}}
+                    />
+                </div>
                     
                     {/* Sheet tabs */}
                     <SheetTabs

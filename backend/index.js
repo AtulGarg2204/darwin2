@@ -9,14 +9,14 @@ const app = express();
 connectDB();
 
 // CORS Configuration
-app.use(cors({
-    origin: ['https://darwin12.netlify.app', 'https://darwin2.onrender.com','http://localhost:3000'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
-    exposedHeaders: ['x-auth-token']
-}));
-// app.use(cors());
+// app.use(cors({
+//     origin: ['https://darwin12.netlify.app', 'https://darwin2.onrender.com','http://localhost:3000'],
+//     credentials: true,
+//     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+//     allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token'],
+//     exposedHeaders: ['x-auth-token']
+// }));
+app.use(cors());
 
 // Configure Express to handle large payloads
 app.use(express.json({ limit: '50mb', extended: true }));
