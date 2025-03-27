@@ -5,10 +5,12 @@ from openai import OpenAI
 import pandas as pd
 import json
 import os
-from ..middleware.auth import get_current_user
-from ..models.records import Record
+from middleware.auth import get_current_user
+from models.records import Record
 
 router = APIRouter()
+from dotenv import load_dotenv
+load_dotenv()
 
 # Initialize OpenAI client
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

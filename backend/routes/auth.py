@@ -5,14 +5,15 @@ from typing import Optional
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from ..models.user import User
-from ..database import get_db
+from models.user import User
+from database import get_db
 from sqlalchemy.orm import Session
+import os
 
 router = APIRouter()
 
 # Security configuration
-SECRET_KEY = "your-secret-key"  # Move to environment variables
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")  # Move to environment variables
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 300  # 5 hours
 
