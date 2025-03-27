@@ -26,6 +26,10 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
 
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 class UserResponse(BaseModel):
     id: int
     name: str
@@ -121,12 +125,9 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/login", response_model=Token)
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
-):
+async def login(login_data: LoginRequest, db: Session = Depends(get_db)):
     # Find user
-    user = db.query(User).filter(User.email == form_data.username).first()
+    user = db.query(User).filter(User.email == login_data.email).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -134,7 +135,7 @@ async def login(
         )
     
     # Verify password
-    if not verify_password(form_data.password, user.password):
+    if not verify_password(login_data.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid credentials"
