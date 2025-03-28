@@ -16,7 +16,7 @@ const Login = () => {
         e.preventDefault();
         try {
             const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/auth/login`, formData);
-            login(res.data.access_token);
+            login(res.data.access_token, res.data.user);
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.msg || 'An error occurred');

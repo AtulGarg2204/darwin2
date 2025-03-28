@@ -901,7 +901,7 @@ const handlePasteCallback = useCallback(async (e) => {
                 fileName: fileName || 'Untitled Data'
             }, {
                 headers: {
-                    'x-auth-token': token
+                    'Authorization': `Bearer ${token}`
                 }
             });
             console.log(response);

@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import chat, auth
+from routes import chat, auth, records
 from database import engine
-from models import user
+from models import user, record
 from dotenv import load_dotenv
 import os
 
@@ -11,6 +11,7 @@ load_dotenv()
 
 # Create database tables
 user.Base.metadata.create_all(bind=engine)
+record.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
@@ -24,3 +25,4 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+app.include_router(records.router, prefix="/api/records", tags=["records"])
