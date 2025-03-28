@@ -23,18 +23,18 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         # Verify token using your JWT secret
         payload = jwt.decode(
             token, 
-            os.environ.get("JWT_SECRET"), 
+            os.environ.get("SECRET_KEY"), 
             algorithms=["HS256"]
         )
-        user = payload.get("user")
+        user_id = payload.get("sub")
         
-        if not user:
+        if not user_id:
             raise HTTPException(
                 status_code=401, 
                 detail="Invalid token format"
             )
             
-        return user
+        return {"id": user_id}
         
     except jwt.PyJWTError:
         raise HTTPException(
