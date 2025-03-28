@@ -29,7 +29,7 @@ const Register = () => {
                 password: formData.password
             });
             
-            login(res.data.token);
+            login(res.data.access_token);
             navigate('/dashboard');
         } catch (err) {
             setError(err.response?.data?.msg || 'An error occurred');
