@@ -56,7 +56,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                     console.log(`Including data from sheet ${sheetId} (${sheets[sheetId].data.length} rows)`);
                 }
             });
-            
+            console.log('Relevant data from chatinterface:', relevantData);
             const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/chat/analyze2`, {
                 message: input,
                 relevantData,       // Send data from all mentioned sheets
