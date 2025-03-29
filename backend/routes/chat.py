@@ -7,7 +7,7 @@ import os
 from routes.auth import get_current_user
 from models.record import Record
 from routes.agents.classifier import RequestClassifier
-from backend.routes.agents.visualization import DataVizualizationAgent
+from routes.agents.visualization import DataVizualizationAgent
 from models.user import User
 
 router = APIRouter()
