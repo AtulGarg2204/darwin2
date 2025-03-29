@@ -162,13 +162,26 @@ class DataAnalysisAgent:
             
             # For small datasets, return direct mapping
             if len(df) <= 50:
-                return df.apply(
-                    lambda row: {
-                        'name': row[x_axis_column] or 'Unknown',
-                        **{col: float(row[col]) for col in y_axis_columns}
-                    },
-                    axis=1
-                ).tolist()
+                result = []
+                for _, row in df.iterrows():
+                    if row[x_axis_column]:
+                        data_point = {'name': row[x_axis_column]}
+                    else:
+                        continue
+                    for col in y_axis_columns:
+                        # Handle empty strings and None values
+                        if row[col] is not None and row[col] != '':
+                            try:
+                                data_point[col] = float(row[col])
+                            except (ValueError, TypeError):
+                                # Skip this column for this row if conversion fails
+                                continue
+                                # data_point[col] = 0
+                        else:
+                            continue
+                            # data_point[col] = 0
+                    result.append(data_point)
+                return result
             
             # Handle grouping and aggregation
             if data_transformation.get('groupBy'):
@@ -188,6 +201,11 @@ class DataAnalysisAgent:
                 if not agg_dict:
                     agg_dict = {col: 'sum' for col in y_axis_columns}
                 
+                # Clean numeric columns before aggregation
+                for col in y_axis_columns:
+                    # Replace empty strings with NaN
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                
                 # Perform grouping and aggregation
                 grouped_df = df.groupby(group_cols).agg(agg_dict).reset_index()
                 
@@ -195,10 +213,13 @@ class DataAnalysisAgent:
                 formatted_data = []
                 for _, row in grouped_df.iterrows():
                     data_point = {
-                        'name': ' - '.join(str(row[col]) for col in group_cols)
+                        'name': ' - '.join(str(val) for val in [row[col] for col in group_cols])
                     }
                     for col in agg_dict.keys():
-                        data_point[col] = float(row[col])
+                        if pd.notna(row[col]):  # Check if value is not NaN
+                            data_point[col] = float(row[col])
+                        else:
+                            data_point[col] = 0  # Or use a default value
                     formatted_data.append(data_point)
                 
                 return formatted_data
@@ -207,13 +228,21 @@ class DataAnalysisAgent:
             limit = 50
             step = max(1, len(df) // limit)
             
-            return df.iloc[::step].head(limit).apply(
-                lambda row: {
-                    'name': row[x_axis_column] or 'Unknown',
-                    **{col: float(row[col]) for col in y_axis_columns}
-                },
-                axis=1
-            ).tolist()
+            # Clean numeric columns before processing
+            for col in y_axis_columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            result = []
+            for _, row in df.iloc[::step].head(limit).iterrows():
+                data_point = {'name': row[x_axis_column] if row[x_axis_column] else 'Unknown'}
+                for col in y_axis_columns:
+                    if pd.notna(row[col]):  # Check if value is not NaN
+                        data_point[col] = float(row[col])
+                    else:
+                        data_point[col] = 0  # Or use a default value
+                result.append(data_point)
+            
+            return result
         
         except Exception as e:
             print(f"Error transforming data: {str(e)}")
@@ -222,7 +251,7 @@ class DataAnalysisAgent:
                 {'name': str(2000 + i), 'value': float(i * 2 + 10)}
                 for i in range(21)
             ]
-
+    
     async def analyze(self, request: Any, current_user: Dict = None):
         """
         Main entry point for visualization data analysis requests.
@@ -343,6 +372,8 @@ class DataAnalysisAgent:
             print("Processing data for chart...")
             processed_data = self.transform_data_for_visualization(source_data, analysis_config)
             print(f"Processed {len(processed_data)} data points")
+
+            print('Processed data:', processed_data)
             
             # Create the final chart configuration
             chart_config = {
@@ -356,7 +387,7 @@ class DataAnalysisAgent:
             
             # Prepare response text
             response_text = f"Here's a {chart_config['type']} chart showing {chart_config['title']}."
-            
+            # print(chart_config)
             return {
                 "text": response_text,
                 "chartConfig": chart_config,
