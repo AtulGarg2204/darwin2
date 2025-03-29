@@ -6,7 +6,8 @@ import json
 import os
 from middleware.auth import get_current_user
 from models.record import Record
-from routes.api.agents import RequestClassifier, DataAnalysisAgent
+from routes.agents.classifier import RequestClassifier
+from routes.agents.data_analysis import DataAnalysisAgent
 
 router = APIRouter()
 from dotenv import load_dotenv
