@@ -5,7 +5,7 @@ import json
 from fastapi import HTTPException
 import pandas as pd
 
-class DataAnalysisAgent:
+class DataVizualizationAgent:
     def __init__(self):
         """Initialize the DataAnalysisAgent with the OpenAI client."""
         self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

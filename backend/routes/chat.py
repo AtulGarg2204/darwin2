@@ -4,17 +4,15 @@ from pydantic import BaseModel
 from openai import OpenAI
 import json
 import os
-from middleware.auth import get_current_user
+from routes.auth import get_current_user
 from models.record import Record
 from routes.agents.classifier import RequestClassifier
-from routes.agents.data_analysis import DataAnalysisAgent
+from backend.routes.agents.visualization import DataVizualizationAgent
+from models.user import User
 
 router = APIRouter()
 from dotenv import load_dotenv
 load_dotenv()
-
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class AnalysisRequest(BaseModel):
     message: str
@@ -25,12 +23,12 @@ class AnalysisRequest(BaseModel):
 
 # Initialize agents
 request_classifier = RequestClassifier()
-data_analysis_agent = DataAnalysisAgent()
+data_analysis_agent = DataVizualizationAgent()
 
 @router.post("/analyze2")
 async def analyze(
     request: AnalysisRequest,
-    current_user: Dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     Main entry point for all analysis requests. Routes to appropriate handler based on request type.

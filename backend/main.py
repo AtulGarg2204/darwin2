@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import chat, auth, records
+from routes import auth
+from routes import chat, records
 from database import engine
 from models import user, record
 from dotenv import load_dotenv
