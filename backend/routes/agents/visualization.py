@@ -63,69 +63,87 @@ class DataVizualizationAgent:
             data_transformation = analysis.get('dataTransformation', {})
             
             # Convert data to DataFrame if it's not already
-            if isinstance(raw_data[0], list):
-                # If data is in array format with headers
-                df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+            if isinstance(raw_data, list) and raw_data:
+                if isinstance(raw_data[0], list):
+                    # If data is in array format with headers
+                    headers = raw_data[0]
+                    df = pd.DataFrame(raw_data[1:], columns=headers)
+                    # Debug
+                    print(f"Created DataFrame from array format. Columns: {df.columns.tolist()}")
+                else:
+                    # If data is in object format
+                    df = pd.DataFrame(raw_data)
+                    # Debug
+                    print(f"Created DataFrame from object format. Columns: {df.columns.tolist()}")
             else:
-                # If data is in object format
-                df = pd.DataFrame(raw_data)
+                print("Invalid data format")
+                return []
             
-            # Handle special case for Netflix data
-            if x_axis_column == 'show_id' and 'release_year' in y_axis_columns:
-                year_counts = df['release_year'].value_counts().sort_index()
-                return [
-                    {'name': str(year), 'value': count}
-                    for year, count in year_counts.items()
-                ]
+            # # Handle special case for Netflix data
+            # if x_axis_column == 'show_id' and 'release_year' in y_axis_columns:
+            #     year_counts = df['release_year'].value_counts().sort_index()
+            #     return [
+            #         {'name': str(year), 'value': count}
+            #         for year, count in year_counts.items()
+            #     ]
             
-            # For small datasets, return direct mapping
-            if len(df) <= 50:
-                result = []
-                for _, row in df.iterrows():
-                    if row[x_axis_column]:
-                        data_point = {'name': row[x_axis_column]}
-                    else:
-                        continue
-                    for col in y_axis_columns:
-                        # Handle empty strings and None values
-                        if row[col] is not None and row[col] != '':
-                            try:
-                                data_point[col] = float(row[col])
-                            except (ValueError, TypeError):
-                                # Skip this column for this row if conversion fails
-                                continue
-                                # data_point[col] = 0
-                        else:
-                            continue
-                            # data_point[col] = 0
-                    result.append(data_point)
-                return result
-            
-            # Handle grouping and aggregation
+            # Handle grouping and aggregation - Move this up to prioritize it
             if data_transformation.get('groupBy'):
                 group_cols = data_transformation['groupBy']
-                agg_dict = {}
+                print(f"Grouping by: {group_cols}")
+                
+                # Check if the grouping columns exist in the DataFrame
+                missing_cols = [col for col in group_cols if col not in df.columns]
+                if missing_cols:
+                    print(f"Warning: Missing columns for grouping: {missing_cols}")
+                    return []
                 
                 # Set up aggregation functions
-                for col, func in data_transformation.get('aggregate', {}).items():
+                agg_dict = {}
+                
+                # Clean numeric columns before aggregation
+                for col in y_axis_columns:
+                    # Check if column exists
+                    if col not in df.columns:
+                        print(f"Warning: Column {col} not in DataFrame. Available columns: {df.columns.tolist()}")
+                        continue
+                    
+                    # Convert to numeric
+                    print(f"Converting {col} to numeric")
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    # Add to aggregation dict based on configuration
+                    func = data_transformation.get('aggregate', {}).get(col, 'sum')
                     if func == 'sum':
                         agg_dict[col] = 'sum'
                     elif func == 'avg':
                         agg_dict[col] = 'mean'
                     elif func == 'count':
                         agg_dict[col] = 'count'
+                    else:
+                        agg_dict[col] = 'sum'  # Default to sum
                 
-                # If no aggregation specified, use sum for y-axis columns
-                if not agg_dict:
-                    agg_dict = {col: 'sum' for col in y_axis_columns}
-                
-                # Clean numeric columns before aggregation
-                for col in y_axis_columns:
-                    # Replace empty strings with NaN
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                print(f"Aggregation dictionary: {agg_dict}")
                 
                 # Perform grouping and aggregation
-                grouped_df = df.groupby(group_cols).agg(agg_dict).reset_index()
+                try:
+                    grouped_df = df.groupby(group_cols).agg(agg_dict).reset_index()
+                    print(f"Grouped DataFrame shape: {grouped_df.shape}")
+                    print(f"Grouped DataFrame first few rows: {grouped_df.head(3).to_dict('records')}")
+                except Exception as e:
+                    print(f"Error during grouping: {str(e)}")
+                    return []
+                
+                # Sort if specified
+                sort_config = data_transformation.get('sort', {})
+                if sort_config:
+                    sort_by = sort_config.get('by')
+                    sort_order = sort_config.get('order', 'descending')
+                    
+                    if sort_by in grouped_df.columns:
+                        ascending = sort_order.lower() != 'descending'
+                        print(f"Sorting by {sort_by} in {'ascending' if ascending else 'descending'} order")
+                        grouped_df = grouped_df.sort_values(by=sort_by, ascending=ascending)
                 
                 # Format the data
                 formatted_data = []
@@ -140,7 +158,29 @@ class DataVizualizationAgent:
                             data_point[col] = 0  # Or use a default value
                     formatted_data.append(data_point)
                 
+                print(f"Returning {len(formatted_data)} formatted data points after grouping")
                 return formatted_data
+            
+            # For small datasets without grouping, return direct mapping
+            if len(df) <= 50:
+                result = []
+                for _, row in df.iterrows():
+                    if pd.notna(row.get(x_axis_column)):
+                        data_point = {'name': row[x_axis_column]}
+                    else:
+                        continue
+                    for col in y_axis_columns:
+                        # Handle empty strings and None values
+                        if pd.notna(row.get(col)) and row.get(col) != '':
+                            try:
+                                data_point[col] = float(row[col])
+                            except (ValueError, TypeError):
+                                # Skip this column for this row if conversion fails
+                                continue
+                        else:
+                            continue
+                    result.append(data_point)
+                return result
             
             # No grouping, just convert to chart format with name/value pairs
             limit = 50
@@ -148,22 +188,29 @@ class DataVizualizationAgent:
             
             # Clean numeric columns before processing
             for col in y_axis_columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
             
             result = []
             for _, row in df.iloc[::step].head(limit).iterrows():
-                data_point = {'name': row[x_axis_column] if row[x_axis_column] else 'Unknown'}
+                if pd.notna(row.get(x_axis_column)):
+                    data_point = {'name': row[x_axis_column]}
+                else:
+                    data_point = {'name': 'Unknown'}
+                    
                 for col in y_axis_columns:
-                    if pd.notna(row[col]):  # Check if value is not NaN
+                    if col in df.columns and pd.notna(row.get(col)):
                         data_point[col] = float(row[col])
                     else:
-                        data_point[col] = 0  # Or use a default value
+                        data_point[col] = 0
                 result.append(data_point)
             
             return result
         
         except Exception as e:
             print(f"Error transforming data: {str(e)}")
+            import traceback
+            traceback.print_exc()
             # Create fallback data
             return [
                 {'name': str(2000 + i), 'value': float(i * 2 + 10)}

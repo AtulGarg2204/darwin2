@@ -29,7 +29,7 @@ class RequestClassifier:
             "intent": "statistical",
             "reason": "Prompt requests statistical analysis",
             "visualization_type": None,
-            "transformation_type": None,
+            "transformation_type": "filter",
             "statistical_type": "correlation"
         }
 
@@ -37,11 +37,21 @@ class RequestClassifier:
 
         Prompt: {user_message}
 
+        For transformation, look for keywords related to:
+        - Filtering (e.g., "filter", "where", "only show", "find", "exclude")
+        - Sorting (e.g., "sort", "order", "arrange", "rank")
+        - Aggregation (e.g., "group", "sum", "average", "count", "total", "by")
+        - Column operations (e.g., "create column", "new column", "calculate", "rename", "drop column")
+
+        For visualization, look for keywords related to charts or graphs.
+
+        For statistical analysis, look for keywords related to statistical tests, correlations, or predictions.
+
         Provide a JSON response with:
         1. intent: Either 'visualization', 'transformation', or 'statistical'
         2. reason: Brief explanation of why this classification was chosen
         3. visualization_type: If intent is 'visualization', specify the chart type ('bar', 'line', 'pie', 'scatter', 'area'),
-        4. transformation_type: If intent is 'transformation', specify the operation type ('aggregate', 'filter', 'join', 'compute'),
+        4. transformation_type: If intent is 'transformation', specify the operation type ('filter', 'sort', 'aggregate', 'column_op'),
         5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'ztest', 'chi_square'), 
 
         Example response format:
@@ -73,6 +83,18 @@ class RequestClassifier:
             category = response_data.get("intent", "visualization").lower()
             
             print(f"Parsed category: {category}")
+            
+            # Get additional details about the operation type
+            if category == "transformation":
+                transformation_type = response_data.get("transformation_type")
+                print(f"Transformation type: {transformation_type}")
+            elif category == "visualization":
+                visualization_type = response_data.get("visualization_type")
+                print(f"Visualization type: {visualization_type}")
+            elif category == "statistical":
+                statistical_type = response_data.get("statistical_type")
+                print(f"Statistical type: {statistical_type}")
+                
         except (json.JSONDecodeError, AttributeError) as e:
             print(f"Error parsing OpenAI response: {str(e)}")
             print(f"Raw response: {response.choices[0].message.content}")

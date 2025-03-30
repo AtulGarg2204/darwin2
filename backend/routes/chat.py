@@ -8,6 +8,7 @@ from routes.auth import get_current_user
 from models.record import Record
 from routes.agents.classifier import RequestClassifier
 from routes.agents.visualization import DataVizualizationAgent
+from routes.agents.transformation import DataTransformationAgent
 from models.user import User
 
 router = APIRouter()
@@ -23,7 +24,8 @@ class AnalysisRequest(BaseModel):
 
 # Initialize agents
 request_classifier = RequestClassifier()
-data_analysis_agent = DataVizualizationAgent()
+data_visualization_agent = DataVizualizationAgent()
+data_transformation_agent = DataTransformationAgent()
 
 @router.post("/analyze2")
 async def analyze(
@@ -39,13 +41,15 @@ async def analyze(
         
         # Route to appropriate handler based on request type
         if request_type == "visualization":
-            return await data_analysis_agent.analyze(request, current_user)
+            return await data_visualization_agent.analyze(request, current_user)
+        elif request_type == "transformation":
+            return await data_transformation_agent.analyze(request, current_user)
         else:
             raise HTTPException(
                 status_code=400,
                 detail={
                     "error": "Unsupported request type",
-                    "text": f"This type of request ({request_type}) is not supported yet. Please try a visualization request."
+                    "text": f"This type of request ({request_type}) is not supported yet. Please try a visualization or transformation request."
                 }
             )
     except Exception as e:
