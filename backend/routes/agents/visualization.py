@@ -1,93 +1,11 @@
-# classifier/request_classifier.py
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from openai import OpenAI
 import os
 import json
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException
 import pandas as pd
 
-class RequestClassifier:
-    def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        
-    async def classify(self, request_data: Dict[str, Any]) -> str:
-        """
-        Classify incoming spreadsheet operation requests into categories
-        
-        Categories:
-        - visualization: charts, graphs, plots
-        - transformation: data manipulation, filtering, sorting
-        - statistical: analysis, correlations, regressions
-        - cleaning: data cleaning, missing values, formatting
-        - forecast: predictions, time series analysis
-        """
-        # Extract user message
-        user_message = request_data.message
-        
-        # Create classification prompt
-        """Determine whether the prompt is requesting data transformation, visualization, or statistical analysis."""
-        response_format = {
-            "intent": "statistical",
-            "reason": "Prompt requests statistical analysis",
-            "visualization_type": None,
-            "transformation_type": None,
-            "statistical_type": "correlation"
-        }
-
-        classification_prompt = f"""Analyze the following prompt and determine if it's requesting data transformation, visualization, or statistical analysis:
-
-        Prompt: {user_message}
-
-        Provide a JSON response with:
-        1. intent: Either 'visualization', 'transformation', or 'statistical'
-        2. reason: Brief explanation of why this classification was chosen
-        3. visualization_type: If intent is 'visualization', specify the chart type ('bar', 'line', 'pie', 'scatter', 'area'),
-        4. transformation_type: If intent is 'transformation', specify the operation type ('aggregate', 'filter', 'join', 'compute'),
-        5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'ztest', 'chi_square'), 
-
-        Example response format:
-        {json.dumps(response_format)}"""
-        
-        # Get classification from OpenAI
-        response = self.client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a classification API. Return only the JSON response as specified in the example response format. Do not include markdown formatting or code blocks."},
-                {"role": "user", "content": classification_prompt}
-            ],
-            temperature=0.4,
-            max_tokens=200
-        )
-        
-        # Extract and parse the response
-        try:
-            # Clean the response content by removing any markdown formatting
-            content = response.choices[0].message.content.strip()
-            if content.startswith('```json'):
-                content = content[7:]
-            if content.endswith('```'):
-                content = content[:-3]
-            content = content.strip()
-            
-            # Parse the JSON response
-            response_data = json.loads(content)
-            category = response_data.get("intent", "visualization").lower()
-            
-            print(f"Parsed category: {category}")
-        except (json.JSONDecodeError, AttributeError) as e:
-            print(f"Error parsing OpenAI response: {str(e)}")
-            print(f"Raw response: {response.choices[0].message.content}")
-            category = "visualization"  # Default to visualization on error
-        
-        # Validate category
-        valid_categories = ["visualization", "transformation", "statistical", "cleaning", "forecast"]
-        if category not in valid_categories:
-            print(f"Invalid category: {category}. Defaulting to visualization.")
-            category = "visualization"
-            
-        return category
-
-class DataAnalysisAgent:
+class DataVizualizationAgent:
     def __init__(self):
         """Initialize the DataAnalysisAgent with the OpenAI client."""
         self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -145,84 +63,160 @@ class DataAnalysisAgent:
             data_transformation = analysis.get('dataTransformation', {})
             
             # Convert data to DataFrame if it's not already
-            if isinstance(raw_data[0], list):
-                # If data is in array format with headers
-                df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+            if isinstance(raw_data, list) and raw_data:
+                if isinstance(raw_data[0], list):
+                    # If data is in array format with headers
+                    headers = raw_data[0]
+                    df = pd.DataFrame(raw_data[1:], columns=headers)
+                    # Debug
+                    print(f"Created DataFrame from array format. Columns: {df.columns.tolist()}")
+                else:
+                    # If data is in object format
+                    df = pd.DataFrame(raw_data)
+                    # Debug
+                    print(f"Created DataFrame from object format. Columns: {df.columns.tolist()}")
             else:
-                # If data is in object format
-                df = pd.DataFrame(raw_data)
+                print("Invalid data format")
+                return []
             
-            # Handle special case for Netflix data
-            if x_axis_column == 'show_id' and 'release_year' in y_axis_columns:
-                year_counts = df['release_year'].value_counts().sort_index()
-                return [
-                    {'name': str(year), 'value': count}
-                    for year, count in year_counts.items()
-                ]
+            # # Handle special case for Netflix data
+            # if x_axis_column == 'show_id' and 'release_year' in y_axis_columns:
+            #     year_counts = df['release_year'].value_counts().sort_index()
+            #     return [
+            #         {'name': str(year), 'value': count}
+            #         for year, count in year_counts.items()
+            #     ]
             
-            # For small datasets, return direct mapping
-            if len(df) <= 50:
-                return df.apply(
-                    lambda row: {
-                        'name': row[x_axis_column] or 'Unknown',
-                        **{col: float(row[col]) for col in y_axis_columns}
-                    },
-                    axis=1
-                ).tolist()
-            
-            # Handle grouping and aggregation
+            # Handle grouping and aggregation - Move this up to prioritize it
             if data_transformation.get('groupBy'):
                 group_cols = data_transformation['groupBy']
-                agg_dict = {}
+                print(f"Grouping by: {group_cols}")
+                
+                # Check if the grouping columns exist in the DataFrame
+                missing_cols = [col for col in group_cols if col not in df.columns]
+                if missing_cols:
+                    print(f"Warning: Missing columns for grouping: {missing_cols}")
+                    return []
                 
                 # Set up aggregation functions
-                for col, func in data_transformation.get('aggregate', {}).items():
+                agg_dict = {}
+                
+                # Clean numeric columns before aggregation
+                for col in y_axis_columns:
+                    # Check if column exists
+                    if col not in df.columns:
+                        print(f"Warning: Column {col} not in DataFrame. Available columns: {df.columns.tolist()}")
+                        continue
+                    
+                    # Convert to numeric
+                    print(f"Converting {col} to numeric")
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    # Add to aggregation dict based on configuration
+                    func = data_transformation.get('aggregate', {}).get(col, 'sum')
                     if func == 'sum':
                         agg_dict[col] = 'sum'
                     elif func == 'avg':
                         agg_dict[col] = 'mean'
                     elif func == 'count':
                         agg_dict[col] = 'count'
+                    else:
+                        agg_dict[col] = 'sum'  # Default to sum
                 
-                # If no aggregation specified, use sum for y-axis columns
-                if not agg_dict:
-                    agg_dict = {col: 'sum' for col in y_axis_columns}
+                print(f"Aggregation dictionary: {agg_dict}")
                 
                 # Perform grouping and aggregation
-                grouped_df = df.groupby(group_cols).agg(agg_dict).reset_index()
+                try:
+                    grouped_df = df.groupby(group_cols).agg(agg_dict).reset_index()
+                    print(f"Grouped DataFrame shape: {grouped_df.shape}")
+                    print(f"Grouped DataFrame first few rows: {grouped_df.head(3).to_dict('records')}")
+                except Exception as e:
+                    print(f"Error during grouping: {str(e)}")
+                    return []
+                
+                # Sort if specified
+                sort_config = data_transformation.get('sort', {})
+                if sort_config:
+                    sort_by = sort_config.get('by')
+                    sort_order = sort_config.get('order', 'descending')
+                    
+                    if sort_by in grouped_df.columns:
+                        ascending = sort_order.lower() != 'descending'
+                        print(f"Sorting by {sort_by} in {'ascending' if ascending else 'descending'} order")
+                        grouped_df = grouped_df.sort_values(by=sort_by, ascending=ascending)
                 
                 # Format the data
                 formatted_data = []
                 for _, row in grouped_df.iterrows():
                     data_point = {
-                        'name': ' - '.join(str(row[col]) for col in group_cols)
+                        'name': ' - '.join(str(val) for val in [row[col] for col in group_cols])
                     }
                     for col in agg_dict.keys():
-                        data_point[col] = float(row[col])
+                        if pd.notna(row[col]):  # Check if value is not NaN
+                            data_point[col] = float(row[col])
+                        else:
+                            data_point[col] = 0  # Or use a default value
                     formatted_data.append(data_point)
                 
+                print(f"Returning {len(formatted_data)} formatted data points after grouping")
                 return formatted_data
+            
+            # For small datasets without grouping, return direct mapping
+            if len(df) <= 50:
+                result = []
+                for _, row in df.iterrows():
+                    if pd.notna(row.get(x_axis_column)):
+                        data_point = {'name': row[x_axis_column]}
+                    else:
+                        continue
+                    for col in y_axis_columns:
+                        # Handle empty strings and None values
+                        if pd.notna(row.get(col)) and row.get(col) != '':
+                            try:
+                                data_point[col] = float(row[col])
+                            except (ValueError, TypeError):
+                                # Skip this column for this row if conversion fails
+                                continue
+                        else:
+                            continue
+                    result.append(data_point)
+                return result
             
             # No grouping, just convert to chart format with name/value pairs
             limit = 50
             step = max(1, len(df) // limit)
             
-            return df.iloc[::step].head(limit).apply(
-                lambda row: {
-                    'name': row[x_axis_column] or 'Unknown',
-                    **{col: float(row[col]) for col in y_axis_columns}
-                },
-                axis=1
-            ).tolist()
+            # Clean numeric columns before processing
+            for col in y_axis_columns:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            result = []
+            for _, row in df.iloc[::step].head(limit).iterrows():
+                if pd.notna(row.get(x_axis_column)):
+                    data_point = {'name': row[x_axis_column]}
+                else:
+                    data_point = {'name': 'Unknown'}
+                    
+                for col in y_axis_columns:
+                    if col in df.columns and pd.notna(row.get(col)):
+                        data_point[col] = float(row[col])
+                    else:
+                        data_point[col] = 0
+                result.append(data_point)
+            
+            return result
         
         except Exception as e:
             print(f"Error transforming data: {str(e)}")
+            import traceback
+            traceback.print_exc()
             # Create fallback data
             return [
                 {'name': str(2000 + i), 'value': float(i * 2 + 10)}
                 for i in range(21)
             ]
-
+    
     async def analyze(self, request: Any, current_user: Dict = None):
         """
         Main entry point for visualization data analysis requests.
@@ -343,6 +337,8 @@ class DataAnalysisAgent:
             print("Processing data for chart...")
             processed_data = self.transform_data_for_visualization(source_data, analysis_config)
             print(f"Processed {len(processed_data)} data points")
+
+            print('Processed data:', processed_data)
             
             # Create the final chart configuration
             chart_config = {
@@ -356,7 +352,7 @@ class DataAnalysisAgent:
             
             # Prepare response text
             response_text = f"Here's a {chart_config['type']} chart showing {chart_config['title']}."
-            
+            # print(chart_config)
             return {
                 "text": response_text,
                 "chartConfig": chart_config,

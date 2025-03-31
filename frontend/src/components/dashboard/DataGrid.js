@@ -888,29 +888,38 @@ const handlePasteCallback = useCallback(async (e) => {
 
     const handleSave = async () => {
         try {
-            const formattedData = data.map(row => {
-                const rowData = {};
-                headers.forEach((header, index) => {
-                    rowData[header] = row[index] || '';
-                });
-                return rowData;
+          const formattedData = data.map(row => {
+            const rowData = {};
+            headers.forEach((header, index) => {
+              rowData[header] = row[index] || '';
             });
-            
-            const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/records`, {
-                data: formattedData,
-                fileName: fileName || 'Untitled Data'
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            console.log(response);
-            alert('Data saved successfully!');
+            return rowData;
+          });
+          
+          // Send as a regular JSON object, not FormData
+          const response = await axios.post(
+            `${process.env.REACT_APP_API_URL}/api/records/`, 
+            {
+              data: formattedData,  // Send the array directly, not as a string
+              file_name: fileName || 'Untitled Data'
+            },
+            {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+          
+          console.log(response);
+          alert('Data saved successfully!');
         } catch (err) {
-            console.error(err);
-            alert('Error saving data');
+          console.error(err);
+          // Show more detailed error information
+          const errorDetail = err.response?.data?.detail || err.message;
+          alert(`Error saving data: ${errorDetail}`);
         }
-    };
+      };
 
     // // Function to prepare chart data from OpenAI format
     // const prepareChartData = (aiResponse = null) => {
