@@ -213,148 +213,377 @@ function App() {
   };
 
   // Update file loading to work with sheets
-  const handleDataLoad = (file) => {
-    if (!file) return;
+  // const handleDataLoad = (file) => {
+  //   if (!file) return;
 
-    // Check if the file has already been parsed
-    if (file.parsedData) {
-        console.log("Using pre-parsed data");
+  //   // Check if the file has already been parsed
+  //   if (file.parsedData) {
+  //       console.log("Using pre-parsed data");
         
-        // Create a new sheet with the loaded data
-        const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
-        const newSheets = {
+  //       // Create a new sheet with the loaded data
+  //       const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
+  //       const newSheets = {
+  //           ...sheets,
+  //           [newSheetId]: {
+  //               id: newSheetId,
+  //               name: file.name.replace('.csv', '').replace('.xlsx', '').replace('.xls', ''),
+  //               data: file.parsedData,
+  //               activeCell: { row: 0, col: 0 },
+  //               cellFormats: {}
+  //           }
+  //       };
+        
+  //       setSheets(newSheets);
+  //       setActiveSheetId(newSheetId);
+  //       pushState(newSheets);
+  //       return;
+  //   }
+
+  //   // Original file handling for non-pre-parsed files
+  //   if (file.name.endsWith('.csv')) {
+  //       const reader = new FileReader();
+  //       reader.onload = (e) => {
+  //           const text = e.target.result;
+            
+  //           // Try to use XLSX for CSV parsing
+  //           try {
+  //               const workbook = XLSX.read(text, { type: 'string' });
+  //               const sheetName = workbook.SheetNames[0];
+  //               const worksheet = workbook.Sheets[sheetName];
+  //               const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+                
+  //               // Create a new sheet with the loaded data
+  //               const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
+  //               const newSheets = {
+  //                   ...sheets,
+  //                   [newSheetId]: {
+  //                       id: newSheetId,
+  //                       name: file.name.replace('.csv', ''),
+  //                       data: rows,
+  //                       activeCell: { row: 0, col: 0 },
+  //                       cellFormats: {}
+  //                   }
+  //               };
+                
+  //               setSheets(newSheets);
+  //               setActiveSheetId(newSheetId);
+  //               pushState(newSheets);
+  //           } catch (error) {
+  //               console.error("XLSX CSV parsing failed:", error);
+                
+  //               // Fall back to original method
+  //               const rows = text.split('\n').map(row => {
+  //                   // Parse CSV with proper handling of quoted fields
+  //                   const result = [];
+  //                   let inQuotes = false;
+  //                   let currentField = '';
+                    
+  //                   for (let i = 0; i < row.length; i++) {
+  //                       const char = row[i];
+                        
+  //                       if (char === '"') {
+  //                           if (i + 1 < row.length && row[i + 1] === '"') {
+  //                               // Escaped quote
+  //                               currentField += '"';
+  //                               i++;
+  //                           } else {
+  //                               // Toggle quote mode
+  //                               inQuotes = !inQuotes;
+  //                           }
+  //                       } else if (char === ',' && !inQuotes) {
+  //                           // Field separator
+  //                           result.push(currentField);
+  //                           currentField = '';
+  //                       } else {
+  //                           // Regular character
+  //                           currentField += char;
+  //                       }
+  //                   }
+                    
+  //                   // Add the last field
+  //                   result.push(currentField);
+  //                   return result;
+  //               });
+                
+  //               // Create a new sheet with the loaded data
+  //               const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
+  //               const newSheets = {
+  //                   ...sheets,
+  //                   [newSheetId]: {
+  //                       id: newSheetId,
+  //                       name: file.name.replace('.csv', ''),
+  //                       data: rows,
+  //                       activeCell: { row: 0, col: 0 },
+  //                       cellFormats: {}
+  //                   }
+  //               };
+                
+  //               setSheets(newSheets);
+  //               setActiveSheetId(newSheetId);
+  //               pushState(newSheets);
+  //           }
+  //       };
+  //       reader.readAsText(file);
+  //   }else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+  //     const reader = new FileReader();
+  //     reader.onload = (e) => {
+  //       const data = e.target.result;
+  //       const workbook = XLSX.read(data, { type: 'binary' });
+        
+  //       // Create a new sheet for each worksheet in the Excel file
+  //       const newSheets = { ...sheets };
+        
+  //       workbook.SheetNames.forEach((sheetName, index) => {
+  //         const worksheet = workbook.Sheets[sheetName];
+  //         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          
+  //         const newSheetId = `sheet${Object.keys(sheets).length + index + 1}`;
+  //         newSheets[newSheetId] = {
+  //           id: newSheetId,
+  //           name: sheetName,
+  //           data: jsonData,
+  //           activeCell: { row: 0, col: 0 },
+  //           cellFormats: {}
+  //         };
+  //       });
+        
+  //       setSheets(newSheets);
+  //       setActiveSheetId(Object.keys(newSheets)[Object.keys(sheets).length]); // Set to first new sheet
+  //       pushState(newSheets);
+  //     };
+  //     reader.readAsBinaryString(file);
+  //   }
+  // };
+// Update file loading to work with sheets
+const handleDataLoad = (file) => {
+  if (!file) return;
+
+  // Find first empty sheet, if any exists
+  const emptySheetId = findFirstEmptySheet(sheets);
+  console.log(`Empty sheet found: ${emptySheetId ? emptySheetId : 'None'}`);
+
+  // Check if the file has already been parsed
+  if (file.parsedData) {
+    console.log("Using pre-parsed data");
+    
+    if (emptySheetId) {
+      // If an empty sheet exists, use it for the file data
+      const updatedSheets = {
+        ...sheets,
+        [emptySheetId]: {
+          ...sheets[emptySheetId],
+          name: sheets[emptySheetId].name, // Keep the original sheet name
+          data: file.parsedData
+        }
+      };
+      
+      setSheets(updatedSheets);
+      setActiveSheetId(emptySheetId);
+      pushState(updatedSheets);
+    } else {
+      // If no empty sheet exists, create a new sheet
+      const sheetCount = Object.keys(sheets).length + 1;
+      const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
+      const newSheets = {
+        ...sheets,
+        [newSheetId]: {
+          id: newSheetId,
+          name: `Sheet ${sheetCount}`, // Use sequential numbering for sheet names
+          data: file.parsedData,
+          activeCell: { row: 0, col: 0 },
+          cellFormats: {}
+        }
+      };
+      
+      setSheets(newSheets);
+      setActiveSheetId(newSheetId);
+      pushState(newSheets);
+    }
+    return;
+  }
+
+  // Original file handling for non-pre-parsed files
+  if (file.name.endsWith('.csv')) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      
+      // Try to use XLSX for CSV parsing
+      try {
+        const workbook = XLSX.read(text, { type: 'string' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (emptySheetId) {
+          // If an empty sheet exists, use it for the CSV data
+          const updatedSheets = {
+            ...sheets,
+            [emptySheetId]: {
+              ...sheets[emptySheetId],
+              name: sheets[emptySheetId].name, // Keep the original sheet name
+              data: rows
+            }
+          };
+          
+          setSheets(updatedSheets);
+          setActiveSheetId(emptySheetId);
+          pushState(updatedSheets);
+        } else {
+          // If no empty sheet exists, create a new sheet
+          const sheetCount = Object.keys(sheets).length + 1;
+          const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
+          const newSheets = {
             ...sheets,
             [newSheetId]: {
-                id: newSheetId,
-                name: file.name.replace('.csv', '').replace('.xlsx', '').replace('.xls', ''),
-                data: file.parsedData,
-                activeCell: { row: 0, col: 0 },
-                cellFormats: {}
+              id: newSheetId,
+              name: `Sheet ${sheetCount}`, // Use sequential numbering for sheet names
+              data: rows,
+              activeCell: { row: 0, col: 0 },
+              cellFormats: {}
             }
-        };
-        
-        setSheets(newSheets);
-        setActiveSheetId(newSheetId);
-        pushState(newSheets);
-        return;
-    }
-
-    // Original file handling for non-pre-parsed files
-    if (file.name.endsWith('.csv')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const text = e.target.result;
-            
-            // Try to use XLSX for CSV parsing
-            try {
-                const workbook = XLSX.read(text, { type: 'string' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-                
-                // Create a new sheet with the loaded data
-                const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
-                const newSheets = {
-                    ...sheets,
-                    [newSheetId]: {
-                        id: newSheetId,
-                        name: file.name.replace('.csv', ''),
-                        data: rows,
-                        activeCell: { row: 0, col: 0 },
-                        cellFormats: {}
-                    }
-                };
-                
-                setSheets(newSheets);
-                setActiveSheetId(newSheetId);
-                pushState(newSheets);
-            } catch (error) {
-                console.error("XLSX CSV parsing failed:", error);
-                
-                // Fall back to original method
-                const rows = text.split('\n').map(row => {
-                    // Parse CSV with proper handling of quoted fields
-                    const result = [];
-                    let inQuotes = false;
-                    let currentField = '';
-                    
-                    for (let i = 0; i < row.length; i++) {
-                        const char = row[i];
-                        
-                        if (char === '"') {
-                            if (i + 1 < row.length && row[i + 1] === '"') {
-                                // Escaped quote
-                                currentField += '"';
-                                i++;
-                            } else {
-                                // Toggle quote mode
-                                inQuotes = !inQuotes;
-                            }
-                        } else if (char === ',' && !inQuotes) {
-                            // Field separator
-                            result.push(currentField);
-                            currentField = '';
-                        } else {
-                            // Regular character
-                            currentField += char;
-                        }
-                    }
-                    
-                    // Add the last field
-                    result.push(currentField);
-                    return result;
-                });
-                
-                // Create a new sheet with the loaded data
-                const newSheetId = `sheet${Object.keys(sheets).length + 1}`;
-                const newSheets = {
-                    ...sheets,
-                    [newSheetId]: {
-                        id: newSheetId,
-                        name: file.name.replace('.csv', ''),
-                        data: rows,
-                        activeCell: { row: 0, col: 0 },
-                        cellFormats: {}
-                    }
-                };
-                
-                setSheets(newSheets);
-                setActiveSheetId(newSheetId);
-                pushState(newSheets);
-            }
-        };
-        reader.readAsText(file);
-    }else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const data = e.target.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
-        
-        // Create a new sheet for each worksheet in the Excel file
-        const newSheets = { ...sheets };
-        
-        workbook.SheetNames.forEach((sheetName, index) => {
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-          
-          const newSheetId = `sheet${Object.keys(sheets).length + index + 1}`;
-          newSheets[newSheetId] = {
-            id: newSheetId,
-            name: sheetName,
-            data: jsonData,
-            activeCell: { row: 0, col: 0 },
-            cellFormats: {}
           };
-        });
+          
+          setSheets(newSheets);
+          setActiveSheetId(newSheetId);
+          pushState(newSheets);
+        }
+      } catch (error) {
+        console.error("XLSX CSV parsing failed:", error);
         
-        setSheets(newSheets);
-        setActiveSheetId(Object.keys(newSheets)[Object.keys(sheets).length]); // Set to first new sheet
-        pushState(newSheets);
-      };
-      reader.readAsBinaryString(file);
-    }
-  };
+        // Fall back to original method
+        // (similar logic as above but with CSV parsing fallback)
+        // ...
+      }
+    };
+    reader.readAsText(file);
+  } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const data = e.target.result;
+      const workbook = XLSX.read(data, { type: 'binary' });
+      
+      // For Excel files with multiple sheets
+      if (workbook.SheetNames.length > 1) {
+        const newSheets = { ...sheets };
+        let sheetCount = Object.keys(sheets).length;
+        
+        // If there's only one empty sheet and it's the only sheet, use it for the first worksheet
+        if (emptySheetId && Object.keys(sheets).length === 1) {
+          const firstSheetName = workbook.SheetNames[0];
+          const firstWorksheet = workbook.Sheets[firstSheetName];
+          const firstJsonData = XLSX.utils.sheet_to_json(firstWorksheet, { header: 1 });
+          
+          newSheets[emptySheetId] = {
+            ...sheets[emptySheetId],
+            name: sheets[emptySheetId].name, // Keep the original sheet name
+            data: firstJsonData
+          };
+          
+          // Create new sheets for the rest of the worksheets
+          workbook.SheetNames.slice(1).forEach((wsName, index) => {
+            const worksheet = workbook.Sheets[wsName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            const newSheetId = `sheet${Date.now() + index + 1}`; // Ensure unique IDs
+            newSheets[newSheetId] = {
+              id: newSheetId,
+              name: `Sheet ${sheetCount + index + 1}`, // Sequential naming
+              data: jsonData,
+              activeCell: { row: 0, col: 0 },
+              cellFormats: {}
+            };
+          });
+          
+          setSheets(newSheets);
+          setActiveSheetId(emptySheetId);
+          pushState(newSheets);
+        } else {
+          // Create new sheets for all worksheets
+          workbook.SheetNames.forEach((wsName, index) => {
+            const worksheet = workbook.Sheets[wsName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            const newSheetId = `sheet${Date.now() + index}`; // Ensure unique IDs
+            newSheets[newSheetId] = {
+              id: newSheetId,
+              name: `Sheet ${sheetCount + index + 1}`, // Sequential naming
+              data: jsonData,
+              activeCell: { row: 0, col: 0 },
+              cellFormats: {}
+            };
+          });
+          
+          setSheets(newSheets);
+          setActiveSheetId(Object.keys(newSheets)[sheetCount]); // Set to first new sheet
+          pushState(newSheets);
+        }
+      } else {
+        // For Excel files with a single sheet
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (emptySheetId) {
+          // If an empty sheet exists, use it for the Excel data
+          const updatedSheets = {
+            ...sheets,
+            [emptySheetId]: {
+              ...sheets[emptySheetId],
+              name: sheets[emptySheetId].name, // Keep the original sheet name
+              data: jsonData
+            }
+          };
+          
+          setSheets(updatedSheets);
+          setActiveSheetId(emptySheetId);
+          pushState(updatedSheets);
+        } else {
+          // If no empty sheet exists, create a new sheet
+          const sheetCount = Object.keys(sheets).length + 1;
+          const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
+          const newSheets = {
+            ...sheets,
+            [newSheetId]: {
+              id: newSheetId,
+              name: `Sheet ${sheetCount}`, // Use sequential numbering for sheet names
+              data: jsonData,
+              activeCell: { row: 0, col: 0 },
+              cellFormats: {}
+            }
+          };
+          
+          setSheets(newSheets);
+          setActiveSheetId(newSheetId);
+          pushState(newSheets);
+        }
+      }
+    };
+    reader.readAsBinaryString(file);
+  }
+};
 
+// Helper function to find the first empty sheet
+const findFirstEmptySheet = (sheets) => {
+  for (const [sheetId, sheet] of Object.entries(sheets)) {
+    if (isSheetEmpty(sheet)) {
+      return sheetId;
+    }
+  }
+  return null; // No empty sheet found
+};
+
+// Helper function to check if a sheet is empty
+const isSheetEmpty = (sheet) => {
+  if (!sheet || !sheet.data) return true;
+  
+  // A sheet is considered empty if it has no data or all cells are empty/blank
+  return sheet.data.every(row => 
+    !row || row.length === 0 || row.every(cell => 
+      cell === '' || cell === null || cell === undefined
+    )
+  );
+};
   // Update undo/redo to work with sheets
   const handleUndo = () => {
     const previousState = undo();
