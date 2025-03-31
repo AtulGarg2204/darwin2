@@ -40,7 +40,7 @@ class RequestClassifier:
         For transformation, look for keywords related to:
         - Filtering (e.g., "filter", "where", "only show", "find", "exclude")
         - Sorting (e.g., "sort", "order", "arrange", "rank")
-        - Aggregation (e.g., "group", "sum", "average", "count", "total", "by")
+        - Aggregation (x`e.g., "group", "sum", "average", "count", "total", "by")
         - Column operations (e.g., "create column", "new column", "calculate", "rename", "drop column")
 
         For visualization, look for keywords related to charts or graphs.

@@ -37,9 +37,33 @@ class DataTransformationAgent:
         if df.empty:
             return []
         
+        # Replace NaN, Infinity, -Infinity with None (which becomes null in JSON)
+        # to avoid JSON serialization issues
+        import numpy as np
+        df_clean = df.copy()
+        
+        # Handle numeric columns that might have special values
+        for col in df_clean.select_dtypes(include=['float', 'int']).columns:
+            # Replace inf/-inf with NaN
+            df_clean[col] = df_clean[col].replace([float('inf'), float('-inf')], np.nan)
+            # Replace NaN with None using mask
+            df_clean[col] = df_clean[col].mask(pd.isna(df_clean[col]), None)
+        
         # Include column headers as the first row
-        headers = df.columns.tolist()
-        data_rows = df.values.tolist()
+        headers = df_clean.columns.tolist()
+        
+        # Convert to list of lists, handling potential special values
+        data_rows = []
+        for _, row in df_clean.iterrows():
+            data_row = []
+            for val in row:
+                # Additional safety check for any special values that might remain
+                if isinstance(val, float) and (pd.isna(val) or np.isinf(val)):
+                    data_row.append(None)
+                else:
+                    data_row.append(val)
+            data_rows.append(data_row)
+        
         result_data = [headers] + data_rows
         
         return result_data
@@ -105,15 +129,29 @@ class DataTransformationAgent:
             3. Make sure to handle potential errors (like missing columns, invalid operations, etc.)
             4. If the user's request is ambiguous, make a reasonable assumption
             5. Always assign the result to result_df
+            6. Make sure to handle NaN values, infinities or other problematic values - replace them with None where appropriate
+            7. Cast string columns to numeric when performing calculations
+            8. Always use reset_index() after groupby operations
             
             For example, if the user asks "Filter rows where Sales is greater than 500", your response should be:
             ```
+            df['Sales'] = pd.to_numeric(df['Sales'], errors='coerce')
             result_df = df[df['Sales'] > 500]
             ```
             
             Or if they ask "Group by Region and sum the Sales", your response should be:
             ```
+            df['Sales'] = pd.to_numeric(df['Sales'], errors='coerce')
             result_df = df.groupby('Region')['Sales'].sum().reset_index()
+            ```
+            
+            When handling calculations with potential division by zero or other operations that might produce NaN or infinite values, use:
+            ```
+            # For division operations (prevents division by zero issues)
+            df['Ratio'] = np.where(df['Denominator'] != 0, df['Numerator'] / df['Denominator'], None)
+            
+            # Replace infinities
+            df = df.replace([np.inf, -np.inf], None)
             ```
             
             Do not include any other text or explanations, ONLY the Python code that performs the transformation.
@@ -148,10 +186,11 @@ class DataTransformationAgent:
             # Execute the code in a safe environment
             try:
                 # Create a local scope with the DataFrame
-                local_scope = {"df": df, "pd": pd, "np": None}
+                import numpy as np
+                local_scope = {"df": df, "pd": pd, "np": np}
                 
                 # Execute the code
-                exec(code, {"pd": pd, "np": None}, local_scope)
+                exec(code, {"pd": pd, "np": np}, local_scope)
                 
                 # Get the result DataFrame
                 if "result_df" in local_scope:
@@ -161,7 +200,17 @@ class DataTransformationAgent:
                         if isinstance(result_df, pd.Series):
                             result_df = result_df.to_frame()
                         else:
-                            raise ValueError(f"result_df is of type {type(result_df)}, expected DataFrame")
+                            # Try to convert to DataFrame if possible
+                            try:
+                                result_df = pd.DataFrame(result_df)
+                            except:
+                                raise ValueError(f"result_df is of type {type(result_df)}, expected DataFrame")
+                    
+                    # Replace any problematic values
+                    for col in result_df.select_dtypes(include=['float', 'int']).columns:
+                        result_df[col] = result_df[col].replace([np.inf, -np.inf], np.nan)
+                        # Use mask() instead of fillna() to replace NaN with None
+                        result_df[col] = result_df[col].mask(pd.isna(result_df[col]), None)
                 else:
                     raise ValueError("Code execution did not produce result_df")
                 
@@ -233,10 +282,11 @@ class DataTransformationAgent:
                 # Try executing the improved code
                 try:
                     # Create a local scope with the DataFrame
-                    local_scope = {"df": df, "pd": pd, "np": None}
+                    import numpy as np
+                    local_scope = {"df": df, "pd": pd, "np": np}
                     
                     # Execute the improved code
-                    exec(improved_code, {"pd": pd, "np": None}, local_scope)
+                    exec(improved_code, {"pd": pd, "np": np}, local_scope)
                     
                     # Get the result DataFrame
                     if "result_df" in local_scope:
@@ -246,7 +296,17 @@ class DataTransformationAgent:
                             if isinstance(result_df, pd.Series):
                                 result_df = result_df.to_frame()
                             else:
-                                raise ValueError(f"result_df is of type {type(result_df)}, expected DataFrame")
+                                # Try to convert to DataFrame if possible
+                                try:
+                                    result_df = pd.DataFrame(result_df)
+                                except:
+                                    raise ValueError(f"result_df is of type {type(result_df)}, expected DataFrame")
+                        
+                        # Replace any problematic values
+                        for col in result_df.select_dtypes(include=['float', 'int']).columns:
+                            result_df[col] = result_df[col].replace([np.inf, -np.inf], np.nan)
+                            # Use mask() instead of fillna() to replace NaN with None
+                            result_df[col] = result_df[col].mask(pd.isna(result_df[col]), None)
                     else:
                         raise ValueError("Code execution did not produce result_df")
                     
