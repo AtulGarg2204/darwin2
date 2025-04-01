@@ -196,7 +196,7 @@ class DataVizualizationAgent:
                 temperature=0.2,
                 max_tokens=1000,
                 response_format={"type": "json_object"}
-            )
+            ) 
             
             # Parse the analysis
             analysis_config = json.loads(analysis_response.choices[0].message.content)
