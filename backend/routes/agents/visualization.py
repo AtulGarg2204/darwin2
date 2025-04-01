@@ -55,24 +55,27 @@ class DataVizualizationAgent:
         # Convert to chart format
         result = []
         for _, row in df_clean.iterrows():
-            if pd.notna(row.get(x_column)):
-                # Use str() to ensure name is always a string
-                data_point = {'name': str(row[x_column])}
-                for col in y_columns:
-                    if col in df_clean.columns:
-                        value = row.get(col)
-                        # Skip None or NaN values
-                        if value is not None and not (isinstance(value, float) and (pd.isna(value) or np.isinf(value))):
-                            # Ensure numeric values are floats for consistency
-                            try:
-                                data_point[col] = float(value)
-                            except (ValueError, TypeError):
-                                # If conversion fails, use original value
-                                data_point[col] = value
+            # Skip rows with empty or None x_column values
+            if pd.isna(row.get(x_column)) or str(row.get(x_column)).strip() == '':
+                continue
                 
-                # Only add the data point if it has at least one y-value
-                if len(data_point) > 1:  # More than just the 'name' field
-                    result.append(data_point)
+            # Use str() to ensure name is always a string
+            data_point = {'name': str(row[x_column]).strip()}
+            for col in y_columns:
+                if col in df_clean.columns:
+                    value = row.get(col)
+                    # Skip None or NaN values
+                    if value is not None and not (isinstance(value, float) and (pd.isna(value) or np.isinf(value))):
+                        # Ensure numeric values are floats for consistency
+                        try:
+                            data_point[col] = float(value)
+                        except (ValueError, TypeError):
+                            # If conversion fails, use original value
+                            data_point[col] = value
+            
+            # Only add the data point if it has at least one y-value
+            if len(data_point) > 1:  # More than just the 'name' field
+                result.append(data_point)
         
         return result
     
