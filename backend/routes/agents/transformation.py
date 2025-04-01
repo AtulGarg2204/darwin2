@@ -49,6 +49,13 @@ class DataTransformationAgent:
             # Replace NaN with None using mask
             df_clean[col] = df_clean[col].mask(pd.isna(df_clean[col]), None)
         
+        # Final cleanup: Remove rows where the first column is empty or just whitespace
+        first_col = df_clean.columns[0]
+        df_clean = df_clean[
+            df_clean[first_col].notna() & 
+            (df_clean[first_col].astype(str).str.strip() != '')
+        ]
+        
         # Include column headers as the first row
         headers = df_clean.columns.tolist()
         
@@ -60,6 +67,9 @@ class DataTransformationAgent:
                 # Additional safety check for any special values that might remain
                 if isinstance(val, float) and (pd.isna(val) or np.isinf(val)):
                     data_row.append(None)
+                elif isinstance(val, str):
+                    # Strip whitespace from string values
+                    data_row.append(val.strip())
                 else:
                     data_row.append(val)
             data_rows.append(data_row)
