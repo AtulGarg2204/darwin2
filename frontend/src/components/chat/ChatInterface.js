@@ -79,14 +79,38 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                 { 
                     sender: 'assistant', 
                     text, 
-                    chartConfig,
-                    transformedData: transformedData || null
+                    chartConfig
                 }
             ];
             setMessages(newMessages);
             
             if (chartConfig && onChartRequest) {
+                // Handle chart visualization
                 onChartRequest(chartConfig, sourceSheetId, targetSheetId);
+            } else if (transformedData && onChartRequest) {
+                // Automatically insert transformed data when available
+                console.log("Automatically inserting transformed data:", transformedData);
+                
+                // Find first empty sheet, if any exists
+                const emptySheetId = findFirstEmptySheet();
+                
+                if (emptySheetId) {
+                    // Use existing empty sheet
+                    const parsedFile = {
+                        name: "Transformed Data",
+                        parsedData: transformedData,
+                        type: 'application/json'
+                    };
+                    onChartRequest(null, null, emptySheetId, parsedFile);
+                } else {
+                    // Create a new sheet
+                    const parsedFile = {
+                        name: "Transformed Data",
+                        parsedData: transformedData,
+                        type: 'application/json'
+                    };
+                    onChartRequest(null, null, null, parsedFile);
+                }
             }
         } catch (error) {
             console.error('Error sending message:', error);
@@ -101,54 +125,8 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
         }
     };
 
-    // Function to handle copying data to clipboard
-    const handleCopyData = (data) => {
-        if (!data) return;
-        
-        // Convert data to CSV format
-        let csvContent = '';
-        
-        // Process each row
-        data.forEach((row, index) => {
-            // Join array elements with commas for CSV format
-            const rowStr = Array.isArray(row) ? row.join(',') : JSON.stringify(row);
-            csvContent += rowStr + '\n';
-        });
-        
-        // Copy to clipboard
-        navigator.clipboard.writeText(csvContent)
-            .then(() => {
-                alert('Data copied to clipboard!');
-            })
-            .catch((err) => {
-                console.error('Failed to copy data: ', err);
-                alert('Failed to copy data to clipboard.');
-            });
-    };
+  
 
-    // Function to handle inserting data into a sheet
-    const handleInsertData = (data) => {
-        if (!data || !Array.isArray(data)) {
-            alert('Invalid data format');
-            return;
-        }
-        
-        try {
-            // Find first empty sheet, if any exists
-            const emptySheetId = findFirstEmptySheet();
-            
-            if (emptySheetId) {
-                // Use existing empty sheet
-                insertDataToSheet(emptySheetId, data);
-            } else {
-                // Create a new sheet
-                createNewSheetWithData(data);
-            }
-        } catch (error) {
-            console.error('Error inserting data:', error);
-            alert('Failed to insert data into sheet.');
-        }
-    };
 
     // Helper function to find the first empty sheet
     const findFirstEmptySheet = () => {
@@ -172,34 +150,9 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
         );
     };
 
-    // Function to insert data into a specific sheet
-    const insertDataToSheet = (sheetId, data) => {
-        // Create a parsedFile with the transformed data
-        const parsedFile = {
-            name: "Transformed Data",
-            parsedData: data,
-            type: 'application/json'
-        };
-        
-        // Call onChartRequest with the new data (it will update the sheet)
-        onChartRequest(null, null, sheetId, parsedFile);
-        alert(`Data inserted into ${sheets[sheetId].name}`);
-    };
+  
 
-    // Function to create a new sheet with the data
-    const createNewSheetWithData = (data) => {
-        // Create a parsedFile with the transformed data
-        const parsedFile = {
-            name: "Transformed Data",
-            parsedData: data,
-            type: 'application/json'
-        };
-        
-        // Call onChartRequest with null target to create a new sheet
-        onChartRequest(null, null, null, parsedFile);
-        alert('Data inserted into a new sheet');
-    };
-    
+  
     return (
         <div className="flex flex-col h-[600px] border rounded-lg shadow-md bg-white">
             <div className="p-4 border-b bg-indigo-600 text-white rounded-t-lg">
@@ -224,23 +177,7 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                                     chartConfig={msg.chartConfig} 
                                 />
                             )}
-                            {/* Display data action buttons when transformedData is present */}
-                            {msg.transformedData && (
-                                <div className="mt-3 flex space-x-2">
-                                    <button 
-                                        onClick={() => handleCopyData(msg.transformedData)}
-                                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-3 py-1 rounded text-sm transition-colors"
-                                    >
-                                        Copy Data
-                                    </button>
-                                    <button 
-                                        onClick={() => handleInsertData(msg.transformedData)}
-                                        className="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                                    >
-                                        Insert Data
-                                    </button>
-                                </div>
-                            )}
+                            {/* We've removed the data action buttons since insertion is now automated */}
                         </div>
                     </div>
                 ))}

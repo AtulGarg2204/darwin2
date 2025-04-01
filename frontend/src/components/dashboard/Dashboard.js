@@ -253,6 +253,7 @@ const Dashboard = forwardRef(({
     //     }
     // };
    // Modified handleChartRequest function for Dashboard component
+// Modified handleChartRequest function for Dashboard component
 const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId, parsedFile) => {
     if (!dataGridRef.current) return;
     
@@ -263,11 +264,52 @@ const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId, parsedFil
         // If parsedFile is provided, we're inserting transformed data
         // First, determine where to insert the data
         if (targetSheetId && sheets[targetSheetId]) {
-            // Insert into an existing sheet (which we know is empty)
+            // Insert into an existing sheet
             const updatedSheets = { ...sheets };
+            
+            // Get the active cell position for this sheet or default to 0,0
+            const activeCell = sheets[targetSheetId].activeCell || { row: 0, col: 0 };
+            
+            // Create a copy of the sheet's data
+            const newData = [...sheets[targetSheetId].data];
+            
+            // Insert the transformed data at the active cell position
+            parsedFile.parsedData.forEach((row, rowIndex) => {
+                const targetRow = activeCell.row + rowIndex;
+                
+                // Ensure we have enough rows
+                while (newData.length <= targetRow) {
+                    newData.push([]);
+                }
+                
+                // Insert each cell in the row
+                if (Array.isArray(row)) {
+                    row.forEach((cell, colIndex) => {
+                        const targetCol = activeCell.col + colIndex;
+                        
+                        // Ensure the row has enough cells
+                        while (newData[targetRow].length <= targetCol) {
+                            newData[targetRow].push('');
+                        }
+                        
+                        newData[targetRow][targetCol] = cell;
+                    });
+                } else {
+                    // Handle non-array rows (single values)
+                    const targetCol = activeCell.col;
+                    
+                    // Ensure the row has enough cells
+                    while (newData[targetRow].length <= targetCol) {
+                        newData[targetRow].push('');
+                    }
+                    
+                    newData[targetRow][targetCol] = row;
+                }
+            });
+            
             updatedSheets[targetSheetId] = {
                 ...sheets[targetSheetId],
-                data: parsedFile.parsedData
+                data: newData
             };
             
             onUpdateSheetData(updatedSheets);
