@@ -252,131 +252,48 @@ const Dashboard = forwardRef(({
     //         dataGridRef.current.createChart(chartConfig.type, activeSheet.activeCell, chartConfig);
     //     }
     // };
-    // const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId) => {
-    //     if (!dataGridRef.current) return;
+    const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId) => {
+        if (!dataGridRef.current) return;
         
-    //     console.log("Creating chart:", {
-    //         type: chartConfig?.type,
-    //         dataPoints: chartConfig?.data?.length,
-    //         source: sourceSheetId || activeSheetId,
-    //         target: targetSheetId || activeSheetId
-    //     });
+        console.log("Creating chart:", {
+            type: chartConfig?.type,
+            dataPoints: chartConfig?.data?.length,
+            source: sourceSheetId || activeSheetId,
+            target: targetSheetId || activeSheetId
+        });
         
-    //     // Create a deep copy of the chart configuration
-    //     const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
+        // Create a deep copy of the chart configuration
+        const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
         
-    //     // Determine final source and target sheet IDs
+        // Determine final source and target sheet IDs
       
-    //     const finalTargetId = targetSheetId || activeSheetId;
+        const finalTargetId = targetSheetId || activeSheetId;
         
-    //     // If the target sheet is different from active, switch to it with a timeout
-    //     if (finalTargetId !== activeSheetId) {
-    //         // First switch to the target sheet
-    //         onSheetChange(finalTargetId);
+        // If the target sheet is different from active, switch to it with a timeout
+        if (finalTargetId !== activeSheetId) {
+            // First switch to the target sheet
+            onSheetChange(finalTargetId);
             
-    //         // Then wait for the sheet change to take effect
-    //         setTimeout(() => {
-    //             if (dataGridRef.current) {
-    //                 // Get target cell in the new sheet
-    //                 const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
+            // Then wait for the sheet change to take effect
+            setTimeout(() => {
+                if (dataGridRef.current) {
+                    // Get target cell in the new sheet
+                    const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
                     
-    //                 // Create the chart with the preserved configuration
-    //                 dataGridRef.current.createChart(
-    //                     chartConfigCopy.type, 
-    //                     targetCell, 
-    //                     chartConfigCopy
-    //                 );
-    //             }
-    //         }, 500); // Timeout for reliable sheet switching
-    //     } else {
-    //         // Same sheet, create chart immediately
-    //         const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
-    //         dataGridRef.current.createChart(chartConfigCopy.type, targetCell, chartConfigCopy);
-    //     }
-    // };
-    // Modified handleChartRequest function for Dashboard component
-const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId, parsedFile) => {
-    if (!dataGridRef.current) return;
-    
-    // Check if we're dealing with a data insertion request
-    if (parsedFile) {
-        console.log("Handling data insertion request");
-        
-        // If parsedFile is provided, we're inserting transformed data
-        // First, determine where to insert the data
-        if (targetSheetId && sheets[targetSheetId]) {
-            // Insert into an existing sheet (which we know is empty)
-            const updatedSheets = { ...sheets };
-            updatedSheets[targetSheetId] = {
-                ...sheets[targetSheetId],
-                data: parsedFile.parsedData
-            };
-            
-            onUpdateSheetData(updatedSheets);
-            onSheetChange(targetSheetId);
-        } else {
-            // Create a new sheet for the data
-            const sheetCount = Object.keys(sheets).length + 1;
-            const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
-            
-            const newSheets = {
-                ...sheets,
-                [newSheetId]: {
-                    id: newSheetId,
-                    name: `Sheet ${sheetCount}`,
-                    data: parsedFile.parsedData,
-                    activeCell: { row: 0, col: 0 },
-                    cellFormats: {}
+                    // Create the chart with the preserved configuration
+                    dataGridRef.current.createChart(
+                        chartConfigCopy.type, 
+                        targetCell, 
+                        chartConfigCopy
+                    );
                 }
-            };
-            
-            onUpdateSheetData(newSheets);
-            onSheetChange(newSheetId);
+            }, 500); // Timeout for reliable sheet switching
+        } else {
+            // Same sheet, create chart immediately
+            const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
+            dataGridRef.current.createChart(chartConfigCopy.type, targetCell, chartConfigCopy);
         }
-        return;
-    }
-    
-    // Original chart creation code
-    if (!chartConfig) return;
-    
-    console.log("Creating chart:", {
-        type: chartConfig?.type,
-        dataPoints: chartConfig?.data?.length,
-        source: sourceSheetId || activeSheetId,
-        target: targetSheetId || activeSheetId
-    });
-    
-    // Create a deep copy of the chart configuration
-    const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
-    
-    // Determine final source and target sheet IDs
-    const finalTargetId = targetSheetId || activeSheetId;
-    
-    // If the target sheet is different from active, switch to it with a timeout
-    if (finalTargetId !== activeSheetId) {
-        // First switch to the target sheet
-        onSheetChange(finalTargetId);
-        
-        // Then wait for the sheet change to take effect
-        setTimeout(() => {
-            if (dataGridRef.current) {
-                // Get target cell in the new sheet
-                const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
-                
-                // Create the chart with the preserved configuration
-                dataGridRef.current.createChart(
-                    chartConfigCopy.type, 
-                    targetCell, 
-                    chartConfigCopy
-                );
-            }
-        }, 500); // Timeout for reliable sheet switching
-    } else {
-        // Same sheet, create chart immediately
-        const targetCell = sheets[finalTargetId]?.activeCell || { row: 0, col: 0 };
-        dataGridRef.current.createChart(chartConfigCopy.type, targetCell, chartConfigCopy);
-    }
-};
+    };
     
 
     // Update format handling function to work with sheets
