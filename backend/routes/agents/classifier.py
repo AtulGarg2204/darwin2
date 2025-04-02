@@ -5,6 +5,7 @@ import os
 import json
 from fastapi import HTTPException, Depends
 import pandas as pd
+
 class RequestClassifier:
     def __init__(self):
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -16,9 +17,7 @@ class RequestClassifier:
         Categories:
         - visualization: charts, graphs, plots
         - transformation: data manipulation, filtering, sorting
-        - statistical: analysis, correlations, regressions
-        - cleaning: data cleaning, missing values, formatting
-        - forecast: predictions, time series analysis
+        - statistical: analysis, correlations, regressions, hypothesis testing
         - query: conversational questions about the data
         """
         # Extract user message
@@ -46,10 +45,13 @@ class RequestClassifier:
 
         For visualization, look for keywords related to charts or graphs like:
         - "show me a chart/graph", "plot", "visualize", "create a chart", "graph this data"
+        - Specific chart types like "bar chart", "pie chart", "line graph", "scatter plot"
 
         For statistical analysis, look for keywords related to:
-        - Statistical tests, correlations, regressions, or predictions
-        - "analyze", "correlation between", "relationship between", "significant difference", "hypothesis test"
+        - "analyze", "statistical", "statistics", "test", "hypothesis", "significance", "p-value"
+        - Specific analysis types like "correlation", "regression", "t-test", "chi-square", "ANOVA"
+        - Statistical concepts like "distribution", "normality", "variance", "standard deviation"
+        - "find relationships", "compare groups", "determine if significant"
 
         For query (conversational questions), look for:
         - Simple questions about the data that don't require transformation or visualization
@@ -62,7 +64,7 @@ class RequestClassifier:
         2. reason: Brief explanation of why this classification was chosen
         3. visualization_type: If intent is 'visualization', specify the chart type ('bar', 'line', 'pie', 'scatter', 'area')
         4. transformation_type: If intent is 'transformation', specify the operation type ('filter', 'sort', 'aggregate', 'column_op')
-        5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'ztest', 'chi_square')
+        5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'chi_square', 'anova', 'regression', 'distribution')
         6. query_type: If intent is 'query', specify the question type ('informational', 'comparative', 'exploratory')
 
         Example response format:
@@ -115,7 +117,7 @@ class RequestClassifier:
             category = "query"  # Default to query on error
         
         # Validate category
-        valid_categories = ["visualization", "transformation", "statistical", "cleaning", "forecast", "query"]
+        valid_categories = ["visualization", "transformation", "statistical", "query"]
         if category not in valid_categories:
             print(f"Invalid category: {category}. Defaulting to query.")
             category = "query"
