@@ -19,40 +19,51 @@ class RequestClassifier:
         - statistical: analysis, correlations, regressions
         - cleaning: data cleaning, missing values, formatting
         - forecast: predictions, time series analysis
+        - query: conversational questions about the data
         """
         # Extract user message
         user_message = request_data.message
         
         # Create classification prompt
-        """Determine whether the prompt is requesting data transformation, visualization, or statistical analysis."""
         response_format = {
-            "intent": "statistical",
-            "reason": "Prompt requests statistical analysis",
+            "intent": "query",
+            "reason": "Prompt is asking a question about the data",
             "visualization_type": None,
-            "transformation_type": "filter",
-            "statistical_type": "correlation"
+            "transformation_type": None,
+            "statistical_type": None,
+            "query_type": "informational"
         }
 
-        classification_prompt = f"""Analyze the following prompt and determine if it's requesting data transformation, visualization, or statistical analysis:
+        classification_prompt = f"""Analyze the following prompt and determine if it's requesting data transformation, visualization, statistical analysis, or simply asking a question about the data:
 
         Prompt: {user_message}
 
         For transformation, look for keywords related to:
         - Filtering (e.g., "filter", "where", "only show", "find", "exclude")
         - Sorting (e.g., "sort", "order", "arrange", "rank")
-        - Aggregation (x`e.g., "group", "sum", "average", "count", "total", "by")
+        - Aggregation (e.g., "group", "sum", "average", "count", "total", "by")
         - Column operations (e.g., "create column", "new column", "calculate", "rename", "drop column")
 
-        For visualization, look for keywords related to charts or graphs.
+        For visualization, look for keywords related to charts or graphs like:
+        - "show me a chart/graph", "plot", "visualize", "create a chart", "graph this data"
 
-        For statistical analysis, look for keywords related to statistical tests, correlations, or predictions.
+        For statistical analysis, look for keywords related to:
+        - Statistical tests, correlations, regressions, or predictions
+        - "analyze", "correlation between", "relationship between", "significant difference", "hypothesis test"
+
+        For query (conversational questions), look for:
+        - Simple questions about the data that don't require transformation or visualization
+        - "what is", "how many", "tell me about", "describe", "explain"
+        - Questions that seek information rather than specific operations
+        - Conversational language without explicit operation requests
 
         Provide a JSON response with:
-        1. intent: Either 'visualization', 'transformation', or 'statistical'
+        1. intent: Either 'visualization', 'transformation', 'statistical', or 'query'
         2. reason: Brief explanation of why this classification was chosen
-        3. visualization_type: If intent is 'visualization', specify the chart type ('bar', 'line', 'pie', 'scatter', 'area'),
-        4. transformation_type: If intent is 'transformation', specify the operation type ('filter', 'sort', 'aggregate', 'column_op'),
-        5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'ztest', 'chi_square'), 
+        3. visualization_type: If intent is 'visualization', specify the chart type ('bar', 'line', 'pie', 'scatter', 'area')
+        4. transformation_type: If intent is 'transformation', specify the operation type ('filter', 'sort', 'aggregate', 'column_op')
+        5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'ztest', 'chi_square')
+        6. query_type: If intent is 'query', specify the question type ('informational', 'comparative', 'exploratory')
 
         Example response format:
         {json.dumps(response_format)}"""
@@ -80,7 +91,7 @@ class RequestClassifier:
             
             # Parse the JSON response
             response_data = json.loads(content)
-            category = response_data.get("intent", "visualization").lower()
+            category = response_data.get("intent", "query").lower()
             
             print(f"Parsed category: {category}")
             
@@ -94,16 +105,19 @@ class RequestClassifier:
             elif category == "statistical":
                 statistical_type = response_data.get("statistical_type")
                 print(f"Statistical type: {statistical_type}")
+            elif category == "query":
+                query_type = response_data.get("query_type")
+                print(f"Query type: {query_type}")
                 
         except (json.JSONDecodeError, AttributeError) as e:
             print(f"Error parsing OpenAI response: {str(e)}")
             print(f"Raw response: {response.choices[0].message.content}")
-            category = "visualization"  # Default to visualization on error
+            category = "query"  # Default to query on error
         
         # Validate category
-        valid_categories = ["visualization", "transformation", "statistical", "cleaning", "forecast"]
+        valid_categories = ["visualization", "transformation", "statistical", "cleaning", "forecast", "query"]
         if category not in valid_categories:
-            print(f"Invalid category: {category}. Defaulting to visualization.")
-            category = "visualization"
+            print(f"Invalid category: {category}. Defaulting to query.")
+            category = "query"
             
         return category

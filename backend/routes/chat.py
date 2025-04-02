@@ -9,6 +9,7 @@ from models.record import Record
 from routes.agents.classifier import RequestClassifier
 from routes.agents.visualization import DataVizualizationAgent
 from routes.agents.transformation import DataTransformationAgent
+from routes.agents.query_bot import QueryBot
 from models.user import User
 
 router = APIRouter()
@@ -26,6 +27,7 @@ class AnalysisRequest(BaseModel):
 request_classifier = RequestClassifier()
 data_visualization_agent = DataVizualizationAgent()
 data_transformation_agent = DataTransformationAgent()
+query_bot = QueryBot()  # Initialize the QueryBot
 
 @router.post("/analyze2")
 async def analyze(
@@ -44,14 +46,12 @@ async def analyze(
             return await data_visualization_agent.analyze(request, current_user)
         elif request_type == "transformation":
             return await data_transformation_agent.analyze(request, current_user)
+        elif request_type == "query":  # Add query support
+            return await query_bot.analyze(request, current_user)
         else:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": "Unsupported request type",
-                    "text": f"This type of request ({request_type}) is not supported yet. Please try a visualization or transformation request."
-                }
-            )
+            # Default to query for any unhandled request types
+            print(f"Unhandled request type: {request_type}. Defaulting to query.")
+            return await query_bot.analyze(request, current_user)
     except Exception as e:
         print(f"Error in analyze route: {str(e)}")
         raise HTTPException(
