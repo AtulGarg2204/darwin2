@@ -19,6 +19,7 @@ const MIN_VISIBLE_COLS = 10;
 const CELL_WIDTH = 120; // Fixed cell width in pixels
 const CELL_HEIGHT = 32; // Fixed cell height in pixels
 const ROW_HEADER_WIDTH = 50; // Fixed width for row numbers column
+const DEFAULT_CHART_SIZE = { width: 5, height: 15 }; // Default chart size
 
 const DataGrid = forwardRef(({ 
   data, 
@@ -35,7 +36,13 @@ const DataGrid = forwardRef(({
     const { token } = useAuth();
     const fileInputRef = useRef(null);
 
-    const CHART_SIZE = { width: 5, height: 15 }; // 5x5 chart size
+    // Chart-related state
+    const [selectedChart, setSelectedChart] = useState(null);
+    const [chartSizes, setChartSizes] = useState({});
+    const [isResizing, setIsResizing] = useState(false);
+    const [resizeStartPos, setResizeStartPos] = useState(null);
+    const [resizeStartSize, setResizeStartSize] = useState(null);
+
     const [formulaBar, setFormulaBar] = useState('');
     const [isEditing, setIsEditing] = useState(false);
     const [formulas, setFormulas] = useState({});
@@ -46,7 +53,38 @@ const DataGrid = forwardRef(({
     const [selectionStart, setSelectionStart] = useState(null);
     const [selectionEnd, setSelectionEnd] = useState(null);
     const [isSelecting, setIsSelecting] = useState(false);
-   
+   // Add this near the beginning of your component to ensure chart size state is initialized
+useEffect(() => {
+    if (data) {
+        const newChartSizes = { ...chartSizes };
+        let hasChanges = false;
+        
+        // Find all chart cells and ensure they have sizes
+        data.forEach((row, rowIndex) => {
+            row.forEach((cell, colIndex) => {
+                if (typeof cell === 'string' && cell.startsWith('CHART:') && cell.includes(':START')) {
+                    const chartKey = `${rowIndex}-${colIndex}`;
+                    if (!newChartSizes[chartKey]) {
+                        try {
+                            const configStr = cell.split(':').slice(1, -1).join(':');
+                            const config = JSON.parse(configStr);
+                            newChartSizes[chartKey] = config.size || DEFAULT_CHART_SIZE;
+                            hasChanges = true;
+                        } catch (error) {
+                            console.error('Error parsing chart config:', error);
+                            newChartSizes[chartKey] = DEFAULT_CHART_SIZE;
+                            hasChanges = true;
+                        }
+                    }
+                }
+            });
+        });
+        
+        if (hasChanges) {
+            setChartSizes(newChartSizes);
+        }
+    }
+}, [data,chartSizes]);
     // Initialize with minimum number of rows and columns
     useEffect(() => {
         // Initialize with empty data if not provided
@@ -91,9 +129,6 @@ const DataGrid = forwardRef(({
         }
     };
     
-    // Function to expand the grid
-  
-    
     // Function to generate column headers beyond Z (AA, AB, etc.)
     const generateColumnLabel = useCallback((index) => {
         let label = '';
@@ -106,6 +141,7 @@ const DataGrid = forwardRef(({
         
         return label;
     }, []);
+    
     const expandGrid = useCallback((addRows, addCols) => {
         if (addRows > 0) {
            
@@ -136,7 +172,8 @@ const DataGrid = forwardRef(({
             setData(newData);
             setVisibleCols(currentColCount + addCols);
         }
-    }, [data,setData, generateColumnLabel,headers]);
+    }, [data, setData, generateColumnLabel, headers]);
+    
     // Update headers when data changes
     useEffect(() => {
         if (data && data[0]) {
@@ -148,6 +185,186 @@ const DataGrid = forwardRef(({
             }
         }
     }, [data, headers.length, generateColumnLabel]);
+
+    // Helper function to get chart config from cell
+    const getChartConfig = useCallback((row, col) => {
+        try {
+            const cellValue = data[row]?.[col];
+            if (!cellValue || !cellValue.startsWith('CHART:') || !cellValue.includes(':START')) {
+                return null;
+            }
+            
+            const chartConfigStr = cellValue.split(':').slice(1, -1).join(':');
+            return JSON.parse(chartConfigStr);
+        } catch (error) {
+            console.error("Error parsing chart config:", error);
+            return null;
+        }
+    }, [data]);
+ // Function to update chart size in grid
+ const updateChartSize = useCallback((row, col, newSize) => {
+    // Get the current data and chart config
+    const cellValue = data[row]?.[col];
+    if (!cellValue || !cellValue.startsWith('CHART:') || !cellValue.includes(':START')) {
+        console.log("Cannot update chart size - not a chart cell");
+        return;
+    }
+    
+    try {
+        // Extract the chart configuration
+        const parts = cellValue.split(':');
+        const chartConfigStr = parts.slice(1, -1).join(':');
+        const chartConfig = JSON.parse(chartConfigStr);
+        
+        // Update the size in the config
+        chartConfig.size = newSize;
+        
+        // Create a new grid with the updated chart
+        const newData = [...data];
+        
+        // Clear the old chart area first (any cells marked as CHART:OCCUPIED)
+        for (let i = 0; i < data.length; i++) {
+            for (let j = 0; j < (data[i] || []).length; j++) {
+                if (data[i][j] === 'CHART:OCCUPIED') {
+                    newData[i][j] = '';
+                }
+            }
+        }
+        
+        // Mark the chart area with new size
+        for (let i = 0; i < newSize.height; i++) {
+            for (let j = 0; j < newSize.width; j++) {
+                if (!newData[row + i]) {
+                    newData[row + i] = [];
+                }
+                if (i === 0 && j === 0) {
+                    // Update the chart configuration in the cell
+                    newData[row][col] = `CHART:${JSON.stringify(chartConfig)}:START`;
+                } else {
+                    newData[row + i][col + j] = 'CHART:OCCUPIED';
+                }
+            }
+        }
+        
+        setData(newData);
+    } catch (error) {
+        console.error("Error updating chart size:", error);
+    }
+}, [data, setData]);
+    // Function to handle resize movement
+    const handleResizeMove = useCallback((e) => {
+        // Always log the values for debugging
+        console.log("Resize move event", isResizing, selectedChart, !!resizeStartPos, !!resizeStartSize);
+        
+        // Check if all required state exists
+        if (!selectedChart) {
+            console.log("No chart selected");
+            return;
+        }
+        
+        if (!resizeStartPos) {
+            console.log("No start position");
+            return;
+        }
+        
+        if (!resizeStartSize) {
+            console.log("No start size");
+            return;
+        }
+        
+        if (!isResizing) {
+            console.log("Not in resize mode");
+            return;
+        }
+        
+        // Calculate delta in cell units (not pixels)
+        const deltaXCells = Math.round((e.clientX - resizeStartPos.x) / CELL_WIDTH);
+        const deltaYCells = Math.round((e.clientY - resizeStartPos.y) / CELL_HEIGHT);
+        
+        // Calculate new size, with minimum bounds
+        const newWidth = Math.max(3, resizeStartSize.width + deltaXCells);
+        const newHeight = Math.max(3, resizeStartSize.height + deltaYCells);
+        
+        // Update chart size in state
+        const chartKey = `${selectedChart.row}-${selectedChart.col}`;
+        const newSize = { width: newWidth, height: newHeight };
+        console.log("Setting new chart size:", newSize);
+        
+        // Use a function form of setState to ensure we're using the latest state
+        setChartSizes(prev => ({
+            ...prev,
+            [chartKey]: newSize
+        }));
+    }, [selectedChart, isResizing, resizeStartPos, resizeStartSize]);
+
+    // Function to handle resize end
+    const handleResizeEnd = useCallback((e) => {
+        console.log("Resize end event", isResizing, selectedChart);
+        if (!isResizing || !selectedChart) {
+            console.log("Cannot end resize - missing state");
+            return;
+        }
+        
+        // Update the chart with final size
+        const chartKey = `${selectedChart.row}-${selectedChart.col}`;
+        const finalSize = chartSizes[chartKey];
+        console.log("Final chart size:", finalSize);
+        updateChartSize(selectedChart.row, selectedChart.col, finalSize);
+        
+        // Reset resize state
+        setIsResizing(false);
+        setResizeStartPos(null);
+        setResizeStartSize(null);
+        
+        // Remove document-level event listeners
+        document.removeEventListener('mousemove', handleResizeMove);
+        document.removeEventListener('mouseup', handleResizeEnd);
+    }, [isResizing, selectedChart, chartSizes, updateChartSize, handleResizeMove]);
+
+    // Function to handle start of resize drag
+    // Update handleResizeStart to be more reliable
+const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log("Resize start, selected chart:", selectedChart);
+    
+    if (!selectedChart) {
+        console.log("No chart selected, can't resize");
+        return;
+    }
+    
+    const chartKey = `${selectedChart.row}-${selectedChart.col}`;
+    const chartConfig = getChartConfig(selectedChart.row, selectedChart.col);
+    console.log("Chart config for resize:", chartConfig);
+    
+    const currentSize = chartSizes[chartKey] || chartConfig?.size || DEFAULT_CHART_SIZE;
+    console.log("Current chart size:", currentSize);
+    
+    // Set state synchronously
+    setResizeStartPos({
+        x: e.clientX,
+        y: e.clientY
+    });
+    setResizeStartSize(currentSize);
+    setIsResizing(true);
+    
+    // Add event listeners after a short timeout to ensure state updates
+    setTimeout(() => {
+        document.addEventListener('mousemove', handleResizeMove);
+        document.addEventListener('mouseup', handleResizeEnd);
+    }, 0);
+}, [selectedChart, chartSizes, getChartConfig,handleResizeEnd,handleResizeMove]);
+
+   
+
+    // Cleanup effect for resize event listeners
+    useEffect(() => {
+        return () => {
+            document.removeEventListener('mousemove', handleResizeMove);
+            document.removeEventListener('mouseup', handleResizeEnd);
+        };
+    }, [handleResizeMove, handleResizeEnd]);
 
     // Function to get range of cells (e.g., A1:A2)
     const getCellRange = useCallback((start, end) => {
@@ -203,7 +420,7 @@ const DataGrid = forwardRef(({
         }
     }, []);
 
-    // Add this helper function for safe mathematical expression evaluation
+    // Helper function for safe mathematical expression evaluation
     const evaluateMathExpression = useCallback((expression) => {
         try {
             // Remove all spaces and convert to lowercase
@@ -279,15 +496,17 @@ const DataGrid = forwardRef(({
             // Check for Excel functions
             const functionMatch = formula.match(/^=([A-Z]+)\((.*)\)$/);
             if (functionMatch) {
-                const [functionName, params] = functionMatch;
+                const [_, functionName, params] = functionMatch;
+                console.log(_);
                 const fn = excelFunctions[functionName];
                 if (!fn) return '#NAME?';
 
                 // Check for range notation (e.g., A1:A2)
                 const rangeMatch = params.match(/([A-Z]+[0-9]+):([A-Z]+[0-9]+)/);
                 if (rangeMatch) {
-                    const [start, end] = rangeMatch;
+                    const [_, start, end] = rangeMatch;
                     const values = getCellRange(start, end);
+                    console.log(_);
                     return fn(values).toString();
                 }
 
@@ -344,7 +563,7 @@ const DataGrid = forwardRef(({
             const newFormulas = { ...formulas };
             delete newFormulas[cellKey];
             setFormulas(newFormulas);
-        newData[rowIndex][colIndex] = value;
+            newData[rowIndex][colIndex] = value;
         }
 
         setData(newData);
@@ -358,25 +577,7 @@ const DataGrid = forwardRef(({
         });
     };
 
-    // // Add this effect to update formula results when data changes
-    // useEffect(() => {
-    //     const newData = [...data];
-    //     let hasChanges = false;
-
-    //     Object.entries(formulas).forEach(([key, formula]) => {
-    //         const [row, col] = key.split('-').map(Number);
-    //         const result = evaluateFormula(formula);
-    //         if (newData[row]?.[col] !== result) {
-    //             if (!newData[row]) newData[row] = [];
-    //             newData[row][col] = result;
-    //             hasChanges = true;
-    //         }
-    //     });
-
-    //     if (hasChanges) {
-    //         setData(newData);
-    //     }
-    // }, [data, formulas,setData,evaluateFormula]);
+    // Effect to update formula results when data changes
     useEffect(() => {
         const newData = [...data];
         let hasChanges = false;
@@ -453,34 +654,44 @@ const DataGrid = forwardRef(({
 
                 if (newRow !== row || newCol !== col) {
                     onCellClick(newRow, newCol);
+                    // Clear selected chart when moving to a new cell with keyboard
+                    setSelectedChart(null);
                 }
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activeCell, data, headers.length,expandGrid, onCellClick]);
-
-
+    }, [activeCell, data, headers.length, expandGrid, onCellClick]);
 
     // Handle mouse events for selection
     const handleMouseDown = (rowIndex, colIndex, e) => {
-     
         setIsSelecting(true);
         setSelectionStart({ row: rowIndex, col: colIndex });
         setSelectionEnd({ row: rowIndex, col: colIndex });
         onCellClick(rowIndex, colIndex);
+        
+        // Check if clicked on a chart
+        const cellValue = data[rowIndex]?.[colIndex];
+        console.log("Clicked cell value:", cellValue);
+        
+        if (typeof cellValue === 'string' && 
+            cellValue.startsWith('CHART:') && 
+            cellValue.includes(':START')) {
+            console.log("Chart detected! Setting selected chart");
+            setSelectedChart({ row: rowIndex, col: colIndex });
+        } else {
+            setSelectedChart(null);
+        }
     };
 
     const handleMouseMove = (rowIndex, colIndex) => {
         if (isSelecting) {
-          
             setSelectionEnd({ row: rowIndex, col: colIndex });
         }
     };
 
     const handleMouseUp = () => {
-       
         setIsSelecting(false);
     };
 
@@ -496,19 +707,15 @@ const DataGrid = forwardRef(({
         return rowIndex >= startRow && rowIndex <= endRow && 
                colIndex >= startCol && colIndex <= endCol;
     };
-
     // Create stable callback functions for clipboard operations
     const handleCopyCallback = useCallback((e) => {
         e.preventDefault();
-
         
         // If no selection, use active cell
         const startRow = selectionStart ? Math.min(selectionStart.row, selectionEnd.row) : activeCell.row;
         const endRow = selectionStart ? Math.max(selectionStart.row, selectionEnd.row) : activeCell.row;
         const startCol = selectionStart ? Math.min(selectionStart.col, selectionEnd.col) : activeCell.col;
         const endCol = selectionStart ? Math.max(selectionStart.col, selectionEnd.col) : activeCell.col;
-
-  
 
         const selectedData = [];
         for (let i = startRow; i <= endRow; i++) {
@@ -530,7 +737,6 @@ const DataGrid = forwardRef(({
     const handleCutCallback = useCallback((e) => {
         e.preventDefault();
     
-        
         handleCopyCallback(e);
         
         // If no selection, use active cell
@@ -549,122 +755,122 @@ const DataGrid = forwardRef(({
         }
         setData(newData);
     }, [data, selectionStart, selectionEnd, activeCell, handleCopyCallback, setData]);
-// In DataGrid.jsx 
-const handlePasteCallback = useCallback(async (e) => {
-    e.preventDefault();
-    
-    if (!activeCell) {
-        console.log("No active cell selected for paste operation");
-        return;
-    }
 
-    let pasteData;
-    try {
-        // Try various clipboard access methods
-        if (e.clipboardData) {
-            pasteData = e.clipboardData.getData('text');
-        } else if (window.clipboardData) {
-            pasteData = window.clipboardData.getData('text');
-        } else {
-            pasteData = await navigator.clipboard.readText();
-        }
+    const handlePasteCallback = useCallback(async (e) => {
+        e.preventDefault();
         
-        if (!pasteData) {
-            console.error('No data in clipboard');
+        if (!activeCell) {
+            console.log("No active cell selected for paste operation");
             return;
         }
-    } catch (error) {
-        console.error('Failed to get clipboard data:', error);
+
+        let pasteData;
         try {
-            pasteData = await navigator.clipboard.readText();
-        } catch (err) {
-            console.error('All clipboard methods failed:', err);
-            return;
+            // Try various clipboard access methods
+            if (e.clipboardData) {
+                pasteData = e.clipboardData.getData('text');
+            } else if (window.clipboardData) {
+                pasteData = window.clipboardData.getData('text');
+            } else {
+                pasteData = await navigator.clipboard.readText();
+            }
+            
+            if (!pasteData) {
+                console.error('No data in clipboard');
+                return;
+            }
+        } catch (error) {
+            console.error('Failed to get clipboard data:', error);
+            try {
+                pasteData = await navigator.clipboard.readText();
+            } catch (err) {
+                console.error('All clipboard methods failed:', err);
+                return;
+            }
         }
-    }
-    
-    console.log("Raw paste data:", pasteData.slice(0, 100) + "...");
-    
-    // Split by newline first
-    const rows = pasteData.split(/[\r\n]+/).filter(row => row.trim() !== '');
-    console.log(`Detected ${rows.length} rows in pasted data`);
+        
+        console.log("Raw paste data:", pasteData.slice(0, 100) + "...");
+        
+        // Split by newline first
+        const rows = pasteData.split(/[\r\n]+/).filter(row => row.trim() !== '');
+        console.log(`Detected ${rows.length} rows in pasted data`);
 
-    const startRow = activeCell.row;
-    const startCol = activeCell.col;
-    const newData = [...data];
-    
-    // Detect if data is tab-delimited or CSV
-    const isTabDelimited = pasteData.includes('\t');
-    console.log(`Data appears to be ${isTabDelimited ? 'tab-delimited' : 'comma-separated'}`);
-    
-    // Parse the pasted data
-    rows.forEach((row, rowIndex) => {
-        console.log(`Processing row ${rowIndex}: ${row.slice(0, 50)}...`);
+        const startRow = activeCell.row;
+        const startCol = activeCell.col;
+        const newData = [...data];
         
-        let cells;
-        if (isTabDelimited) {
-            // For tab-delimited data (from Excel, Google Sheets)
-            cells = row.split('\t');
-            console.log(`Split into ${cells.length} cells by tabs`);
-        } else {
-            // For CSV data, use a proper parser that respects quotes
-            cells = [];
-            let inQuote = false;
-            let currentCell = '';
+        // Detect if data is tab-delimited or CSV
+        const isTabDelimited = pasteData.includes('\t');
+        console.log(`Data appears to be ${isTabDelimited ? 'tab-delimited' : 'comma-separated'}`);
+        
+        // Parse the pasted data
+        rows.forEach((row, rowIndex) => {
+            console.log(`Processing row ${rowIndex}: ${row.slice(0, 50)}...`);
             
-            // Parse CSV with proper quote handling
-            for (let i = 0; i < row.length; i++) {
-                const char = row[i];
+            let cells;
+            if (isTabDelimited) {
+                // For tab-delimited data (from Excel, Google Sheets)
+                cells = row.split('\t');
+                console.log(`Split into ${cells.length} cells by tabs`);
+            } else {
+                // For CSV data, use a proper parser that respects quotes
+                cells = [];
+                let inQuote = false;
+                let currentCell = '';
                 
-                if (char === '"') {
-                    if (i + 1 < row.length && row[i + 1] === '"') {
-                        // Double quote inside quoted field = literal quote
-                        currentCell += '"';
-                        i++; // Skip the next quote
+                // Parse CSV with proper quote handling
+                for (let i = 0; i < row.length; i++) {
+                    const char = row[i];
+                    
+                    if (char === '"') {
+                        if (i + 1 < row.length && row[i + 1] === '"') {
+                            // Double quote inside quoted field = literal quote
+                            currentCell += '"';
+                            i++; // Skip the next quote
+                        } else {
+                            // Toggle quote state
+                            inQuote = !inQuote;
+                        }
+                    } else if (char === ',' && !inQuote) {
+                        // Comma outside quotes = field separator
+                        cells.push(currentCell);
+                        currentCell = '';
                     } else {
-                        // Toggle quote state
-                        inQuote = !inQuote;
+                        // Regular character
+                        currentCell += char;
                     }
-                } else if (char === ',' && !inQuote) {
-                    // Comma outside quotes = field separator
-                    cells.push(currentCell);
-                    currentCell = '';
-                } else {
-                    // Regular character
-                    currentCell += char;
                 }
+                
+                // Add the last cell
+                cells.push(currentCell);
+                console.log(`Split into ${cells.length} cells with CSV parsing`);
             }
             
-            // Add the last cell
-            cells.push(currentCell);
-            console.log(`Split into ${cells.length} cells with CSV parsing`);
-        }
-        
-        // Apply the parsed cells to the grid
-        cells.forEach((cell, colIndex) => {
-            const targetRow = startRow + rowIndex;
-            const targetCol = startCol + colIndex;
-            
-            // Trim quotes from the beginning and end of the cell
-            const trimmedCell = cell.replace(/^"|"$/g, '');
-            
-            // Ensure we have enough rows
-            while (newData.length <= targetRow) {
-                newData.push(Array(Math.max(newData[0]?.length || 0, targetCol + 1)).fill(''));
-            }
-            
-            // Ensure we have enough columns in this row
-            while (newData[targetRow].length <= targetCol) {
-                newData[targetRow].push('');
-            }
-            
-            console.log(`Setting cell [${targetRow},${targetCol}] to: ${trimmedCell.slice(0, 30)}...`);
-            newData[targetRow][targetCol] = trimmedCell;
+            // Apply the parsed cells to the grid
+            cells.forEach((cell, colIndex) => {
+                const targetRow = startRow + rowIndex;
+                const targetCol = startCol + colIndex;
+                
+                // Trim quotes from the beginning and end of the cell
+                const trimmedCell = cell.replace(/^"|"$/g, '');
+                
+                // Ensure we have enough rows
+                while (newData.length <= targetRow) {
+                    newData.push(Array(Math.max(newData[0]?.length || 0, targetCol + 1)).fill(''));
+                }
+                
+                // Ensure we have enough columns in this row
+                while (newData[targetRow].length <= targetCol) {
+                    newData[targetRow].push('');
+                }
+                
+                console.log(`Setting cell [${targetRow},${targetCol}] to: ${trimmedCell.slice(0, 30)}...`);
+                newData[targetRow][targetCol] = trimmedCell;
+            });
         });
-    });
-    
-    setData(newData);
-}, [data, activeCell, setData]);
+        
+        setData(newData);
+    }, [data, activeCell, setData]);
 
     // Update useEffect to use the new callback functions
     useEffect(() => {
@@ -728,7 +934,6 @@ const handlePasteCallback = useCallback(async (e) => {
                     if (jsonData.length > 0) {
                         console.log(`First row has ${jsonData[0].length} columns`);
                     }
-                    
                     if (jsonData.length > 0) {
                         // Generate column headers (A, B, C, etc.)
                         const colCount = Math.max(
@@ -835,7 +1040,7 @@ const handlePasteCallback = useCallback(async (e) => {
                     }
                 }
             } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-                // Parse Excel using xlsx library (your existing code)
+                // Parse Excel using xlsx library
                 try {
                     const workbook = XLSX.read(content, { type: 'binary' });
                     const sheetName = workbook.SheetNames[0];
@@ -919,139 +1124,34 @@ const handlePasteCallback = useCallback(async (e) => {
           const errorDetail = err.response?.data?.detail || err.message;
           alert(`Error saving data: ${errorDetail}`);
         }
-      };
-
-    // // Function to prepare chart data from OpenAI format
-    // const prepareChartData = (aiResponse = null) => {
-    //     if (aiResponse) {
-    //         console.log('Preparing chart data from AI response:', aiResponse);
-            
-    //         // If we have AI-generated data, use it directly
-    //         if (aiResponse.data?.labels && aiResponse.data?.datasets) {
-    //             const chartData = aiResponse.data.labels.map((label, index) => {
-    //                 const dataPoint = { name: label };
-    //                 // Add all dataset values
-    //                 aiResponse.data.datasets.forEach(dataset => {
-    //                     if (dataset.data && dataset.data[index] !== undefined) {
-    //                         dataPoint[dataset.label || 'Value'] = dataset.data[index];
-    //                     }
-    //                 });
-    //                 return dataPoint;
-    //             });
-                
-    //             console.log('Prepared chart data:', chartData);
-    //             return chartData;
-    //         }
-    //     }
-    //     console.log("DATA",data);
-    //     // Fallback to grid data format
-    //     if (!data || data.length < 2) {
-    //         console.log('No data available for chart');
-    //         return [];
-    //     }
-        
-    //     // Get the data rows (skip empty rows)
-    //     const rows = data.filter(row => row && row.some(cell => cell !== ''));
-    //     if (rows.length < 2) {
-    //         console.log('Not enough data rows for chart');
-    //         return [];
-    //     }
-
-    //     // Get the header row (first row)
-    //     const headerRow = rows[0];
-    //     console.log(headerRow,"headerRowsss");
-    //     // Find numeric columns
-    //     const numericColumns = [];
-    //     for (let i = 0; i < headerRow.length; i++) {
-    //         // Check if this column has any numeric values
-    //         const hasNumericValues = rows.slice(1).some(row => {
-    //             const value = row[i];
-    //             return value !== '' && !isNaN(parseFloat(value));
-    //         });
-    //         if (hasNumericValues) {
-    //             numericColumns.push(i);
-    //         }
-    //     }
-
-    //     console.log('Found numeric columns:', numericColumns);
-
-    //     // Transform data rows into chart format
-    //     const chartData = rows.slice(1) // Skip header row
-    //         .map(row => {
-    //             if (!row || row.length === 0) return null;
-
-    //             const dataPoint = {
-    //                 name: row[0] || 'Unnamed' // Use first column as name
-    //             };
-
-    //             // Add all numeric columns to the data point
-    //             numericColumns.forEach(colIndex => {
-    //                 if (colIndex !== 0) { // Skip the name column
-    //                     const value = parseFloat(row[colIndex]);
-    //                     if (!isNaN(value)) {
-    //                         dataPoint[headerRow[colIndex] || `Column ${colIndex}`] = value;
-    //                     }
-    //                 }
-    //             });
-
-    //             return dataPoint;
-    //         })
-    //         .filter(point => point !== null && Object.keys(point).length > 1); // Must have at least name and one value
-
-    //     console.log('Generated chart data:', chartData);
-    //     return chartData;
-    // };
-    
-    // Function to create chart
-    // const createChart = (type = 'bar', startCell = activeCell, chartConfig = null) => {
-    //     if (!startCell) return;
-        
-    //     const newData = [...data];
-    //     console.log(newData,"NEW DATA IS ");
-    //     console.log("Creating chart with config:", chartConfig);
-        
-    //     // Ensure we have enough rows and columns for the chart
-    //     while (newData.length <= startCell.row + CHART_SIZE.height) {
-    //         newData.push(Array(newData[0]?.length || 1).fill(''));
-    //     }
-    
-    //     // Mark the chart area
-    //     for (let i = 0; i < CHART_SIZE.height; i++) {
-    //         for (let j = 0; j < CHART_SIZE.width; j++) {
-    //             if (!newData[startCell.row + i]) {
-    //                 newData[startCell.row + i] = [];
-    //             }
-    //             if (i === 0 && j === 0) {
-    //                 // Store chart configuration in the cell
-    //                 newData[startCell.row][startCell.col] = `CHART:${JSON.stringify(chartConfig)}:START`;
-    //             } else {
-    //                 newData[startCell.row + i][startCell.col + j] = 'CHART:OCCUPIED';
-    //             }
-    //         }
-    //     }
-        
-    //     setData(newData);
-    // };
-    const createChart = (type = 'bar', startCell = activeCell, chartConfig = null) => {
+    };
+    // Function to create chart with size handling
+    const createChart = useCallback((type = 'bar', startCell = activeCell, chartConfig = null) => {
         if (!startCell) return;
         
         console.log("Creating chart with config:", chartConfig);
         console.log("Chart data length:", chartConfig?.data?.length || 0);
-        console.log("Sample data:", chartConfig?.data?.slice(0, 3));
         
         const newData = [...data];
         
+        // Get chart size (use custom size or default)
+        const chartKey = `${startCell.row}-${startCell.col}`;
+        const chartSize = chartSizes[chartKey] || DEFAULT_CHART_SIZE;
+        
         // Ensure we have enough rows and columns for the chart
-        while (newData.length <= startCell.row + CHART_SIZE.height) {
+        while (newData.length <= startCell.row + chartSize.height) {
             newData.push(Array(newData[0]?.length || 1).fill(''));
         }
     
-        // Make ANOTHER deep copy to ensure nothing modifies our chart data
+        // Make a deep copy of the chart config
         const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
         
+        // Store the chart size in the config
+        chartConfigCopy.size = chartSize;
+        
         // Mark the chart area
-        for (let i = 0; i < CHART_SIZE.height; i++) {
-            for (let j = 0; j < CHART_SIZE.width; j++) {
+        for (let i = 0; i < chartSize.height; i++) {
+            for (let j = 0; j < chartSize.width; j++) {
                 if (!newData[startCell.row + i]) {
                     newData[startCell.row + i] = [];
                 }
@@ -1071,49 +1171,97 @@ const handlePasteCallback = useCallback(async (e) => {
         }
         
         setData(newData);
-    };
-    // Custom component for Treemap to display labels inside
-const CustomizedTreemapContent = (props) => {
-    const {  depth, x, y, width, height, name, value } = props;
-  
-    return (
-      <g>
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={height}
-          style={{
-            fill: props.fill || '#8884d8',
-            stroke: '#fff',
-            strokeWidth: 2 / (depth + 1e-10),
-            strokeOpacity: 1 / (depth + 1e-10),
-          }}
-        />
-        {width > 50 && height > 30 ? (
-          <text
-            x={x + width / 2}
-            y={y + height / 2}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="#fff"
-            fontSize={12}
-          >
-            {name}: {value !== undefined ? value.toFixed(1) : ''}
-          </text>
-        ) : null}
-      </g>
-    );
-  };
+    }, [data, setData, activeCell, chartSizes]);
+
+    // Function to render chart controls
+    const renderChartControls = useCallback(() => {
+        if (!selectedChart) return null;
+        
+        // Find the chart configuration in the selected cell
+        const cellValue = data[selectedChart.row]?.[selectedChart.col];
+        if (!cellValue || !cellValue.startsWith('CHART:') || !cellValue.includes(':START')) {
+            return null;
+        }
+        
+        try {
+            // Extract and parse the chart configuration
+            const chartConfigStr = cellValue.split(':').slice(1, -1).join(':');
+            const chartConfig = JSON.parse(chartConfigStr);
+            const chartKey = `${selectedChart.row}-${selectedChart.col}`;
+            const chartSize = chartSizes[chartKey] || chartConfig.size || DEFAULT_CHART_SIZE;
+            
+            return (
+                <div className="absolute bottom-16 right-8 bg-white border border-gray-300 rounded-md p-2 shadow-lg">
+                    <div className="text-sm font-semibold mb-2">Chart Size</div>
+                    <div className="flex items-center mb-1">
+                        <span className="mr-2 text-sm">Width:</span>
+                        <button 
+                            className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm mr-1"
+                            onClick={() => {
+                                const newSize = { ...chartSize, width: Math.max(3, chartSize.width - 1) };
+                                setChartSizes({ ...chartSizes, [chartKey]: newSize });
+                                updateChartSize(selectedChart.row, selectedChart.col, newSize);
+                            }}
+                        >
+                            -
+                        </button>
+                        <span className="mx-1">{chartSize.width}</span>
+                        <button 
+                            className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm ml-1"
+                            onClick={() => {
+                                const newSize = { ...chartSize, width: Math.min(15, chartSize.width + 1) };
+                                setChartSizes({ ...chartSizes, [chartKey]: newSize });
+                                updateChartSize(selectedChart.row, selectedChart.col, newSize);
+                            }}
+                        >
+                            +
+                        </button>
+                    </div>
+                    <div className="flex items-center">
+                        <span className="mr-2 text-sm">Height:</span>
+                        <button 
+                            className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm mr-1"
+                            onClick={() => {
+                                const newSize = { ...chartSize, height: Math.max(3, chartSize.height - 1) };
+                                setChartSizes({ ...chartSizes, [chartKey]: newSize });
+                                updateChartSize(selectedChart.row, selectedChart.col, newSize);
+                            }}
+                        >
+                            -
+                        </button>
+                        <span className="mx-1">{chartSize.height}</span>
+                        <button 
+                            className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm ml-1"
+                            onClick={() => {
+                                const newSize = { ...chartSize, height: Math.min(30, chartSize.height + 1) };
+                                setChartSizes({ ...chartSizes, [chartKey]: newSize });
+                                updateChartSize(selectedChart.row, selectedChart.col, newSize);
+                            }}
+                        >
+                            +
+                        </button>
+                    </div>
+                </div>
+            );
+        } catch (error) {
+            console.error("Error rendering chart controls:", error);
+            return null;
+        }
+    }, [selectedChart, data, chartSizes, updateChartSize]);
+
     // Function to render chart
-    const renderChart = (type, startCell, chartConfig = null) => {
+    const renderChart = useCallback((type, startCell, chartConfig = null) => {
         console.log("Rendering chart with config:", chartConfig);
         console.log("Chart data length:", chartConfig?.data?.length || 0);
         
+        // Get chart size (use custom size or size from config or default)
+        const chartKey = `${startCell.row}-${startCell.col}`;
+        const chartSize = chartSizes[chartKey] || chartConfig?.size || DEFAULT_CHART_SIZE;
+        
         // Create default style for the chart container
         const chartStyle = {
-            width: `${CHART_SIZE.width * 120}px`,
-            height: `${CHART_SIZE.height * 25}px`,
+            width: `${chartSize.width * CELL_WIDTH}px`,
+            height: `${chartSize.height * CELL_HEIGHT}px`,
             position: 'absolute',
             backgroundColor: 'white',
             border: '1px solid #ddd',
@@ -1122,18 +1270,74 @@ const CustomizedTreemapContent = (props) => {
             zIndex: 10
         };
     
+        // Check if this chart is currently selected
+        const isSelected = selectedChart && 
+            selectedChart.row === startCell.row && 
+            selectedChart.col === startCell.col;
+        
         // Validate chart config
         if (!chartConfig || !chartConfig.data || !chartConfig.type) {
             console.error("Invalid chart configuration:", chartConfig);
-            return <div style={chartStyle} className="p-4">Invalid chart configuration</div>;
+            return (
+                <div style={chartStyle} className="p-4">
+                    Invalid chart configuration
+                    {isSelected && (
+                        <div 
+                            className="chart-resize-handle"
+                            style={{
+                                position: 'absolute',
+                                right: 0,
+                                bottom: 0,
+                                width: '20px',
+                                height: '20px',
+                                background: 'rgba(0, 120, 215, 0.9)',
+                                cursor: 'nwse-resize',
+                                borderTop: '3px solid white',
+                                borderLeft: '3px solid white',
+                                borderTopLeftRadius: '5px',
+                                zIndex: 100
+                            }}
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleResizeStart(e);
+                            }}
+                        />
+                    )}
+                </div>
+            );
         }
         
         // Validate chart data
         if (!Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
             console.error("Chart data is missing or empty:", chartConfig.data);
-            return <div style={chartStyle} className="p-4">Chart data is missing or empty</div>;
+            return (
+                <div style={chartStyle} className="p-4">
+                    Chart data is missing or empty
+                    {isSelected && (
+                        <div 
+                            className="chart-resize-handle"
+                            style={{
+                                position: 'absolute',
+                                right: 0,
+                                bottom: 0,
+                                width: '20px',
+                                height: '20px',
+                                background: 'rgba(0, 120, 215, 0.9)',
+                                cursor: 'nwse-resize',
+                                borderTop: '3px solid white',
+                                borderLeft: '3px solid white',
+                                borderTopLeftRadius: '5px',
+                                zIndex: 100
+                            }}
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleResizeStart(e);
+                            }}
+                        />
+                    )}
+                </div>
+            );
         }
-        
         // Extract data and settings from the chart config
         const chartData = chartConfig.data;
         const chartTitle = chartConfig.title || 'Chart';
@@ -1144,15 +1348,41 @@ const CustomizedTreemapContent = (props) => {
         
         if (dataKeys.length === 0) {
             console.error("No data keys found in chart data");
-            return <div style={chartStyle} className="p-4">No data values found for chart</div>;
+            return (
+                <div style={chartStyle} className="p-4">
+                    No data values found for chart
+                    {isSelected && (
+                        <div 
+                            className="chart-resize-handle"
+                            style={{
+                                position: 'absolute',
+                                right: 0,
+                                bottom: 0,
+                                width: '20px',
+                                height: '20px',
+                                background: 'rgba(0, 120, 215, 0.9)',
+                                cursor: 'nwse-resize',
+                                borderTop: '3px solid white',
+                                borderLeft: '3px solid white',
+                                borderTopLeftRadius: '5px',
+                                zIndex: 100
+                            }}
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                                handleResizeStart(e);
+                            }}
+                        />
+                    )}
+                </div>
+            );
         }
-       
         
-        // Render the appropriate chart type
+        // Render the appropriate chart type based on the configuration
+        let chartContent;
         switch (chartConfig.type.toLowerCase()) {
             case 'bar':
-                return (
-                    <div style={chartStyle}>
+                chartContent = (
+                    <>
                         <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
                         <ResponsiveContainer width="100%" height="90%">
                             <BarChart data={chartData}>
@@ -1168,57 +1398,60 @@ const CustomizedTreemapContent = (props) => {
                                         fill={chartColors[index % chartColors.length]} 
                                         name={key}
                                         label={{
-                                position: 'top',
-                               formatter: (value) => (typeof value === 'number' ? value.toFixed(1) : value),
-                                fill: '#666',
-                                fontSize: 12
-                            }}
+                                            position: 'top',
+                                            formatter: (value) => (typeof value === 'number' ? value.toFixed(1) : value),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
                                     />
                                 ))}
                             </BarChart>
                         </ResponsiveContainer>
-                    </div>
+                    </>
                 );
-                case 'column':
-                    return (
-                        <div style={chartStyle}>
-                            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                            <ResponsiveContainer width="100%" height="90%">
-                                <BarChart 
-                                    data={chartData}
-                                    layout="vertical"
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis type="number" />
-                                    <YAxis 
-                                        dataKey="name" 
-                                        type="category" 
-                                        width={80}
+                break;
+                
+            case 'column':
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <BarChart 
+                                data={chartData}
+                                layout="vertical"
+                            >
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis type="number" />
+                                <YAxis 
+                                    dataKey="name" 
+                                    type="category" 
+                                    width={80}
+                                />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index) => (
+                                    <Bar 
+                                        key={key} 
+                                        dataKey={key} 
+                                        fill={chartColors[index % chartColors.length]} 
+                                        name={key}
+                                        label={{
+                                            position: 'right',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
                                     />
-                                    <Tooltip />
-                                    <Legend />
-                                    {dataKeys.map((key, index) => (
-                                        <Bar 
-                                            key={key} 
-                                            dataKey={key} 
-                                            fill={chartColors[index % chartColors.length]} 
-                                            name={key}
-                                            label={{
-                                position: 'right',
-                                formatter: (value) => value.toFixed(1),
-                                fill: '#666',
-                                fontSize: 12
-                            }}
-                                        />
-                                    ))}
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </div>
-                    );
-
+                                ))}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+    
             case 'line':
-                return (
-                    <div style={chartStyle}>
+                chartContent = (
+                    <>
                         <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
                         <ResponsiveContainer width="100%" height="90%">
                             <LineChart data={chartData}>
@@ -1235,21 +1468,22 @@ const CustomizedTreemapContent = (props) => {
                                         stroke={chartColors[index % chartColors.length]} 
                                         name={key}
                                         label={{
-                                position: 'top',
-                                formatter: (value) => value.toFixed(1),
-                                fill: '#666',
-                                fontSize: 12
-                            }}
+                                            position: 'top',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
                                     />
                                 ))}
                             </LineChart>
                         </ResponsiveContainer>
-                    </div>
+                    </>
                 );
+                break;
                 
             case 'pie':
-                return (
-                    <div style={chartStyle}>
+                chartContent = (
+                    <>
                         <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
                         <ResponsiveContainer width="100%" height="90%">
                             <PieChart>
@@ -1271,12 +1505,13 @@ const CustomizedTreemapContent = (props) => {
                                 <Legend />
                             </PieChart>
                         </ResponsiveContainer>
-                    </div>
+                    </>
                 );
+                break;
                 
             case 'area':
-                return (
-                    <div style={chartStyle}>
+                chartContent = (
+                    <>
                         <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
                         <ResponsiveContainer width="100%" height="90%">
                             <AreaChart data={chartData}>
@@ -1295,168 +1530,309 @@ const CustomizedTreemapContent = (props) => {
                                         fillOpacity={0.6}
                                         name={key}
                                         label={{
-                                position: 'top',
-                                formatter: (value) => value.toFixed(1),
-                                fill: '#666',
-                                fontSize: 12
-                            }}
+                                            position: 'top',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
                                     />
                                 ))}
                             </AreaChart>
                         </ResponsiveContainer>
-                    </div>
+                    </>
                 );
-            case 'radar':
-            return (
-                <div style={chartStyle}>
-                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                    <ResponsiveContainer width="100%" height="90%">
-                        <RadarChart cx="50%" cy="50%" outerRadius={80} data={chartData}>
-                            <PolarGrid />
-                            <PolarAngleAxis dataKey="name" />
-                            <PolarRadiusAxis />
-                            {dataKeys.map((key, index) => (
-                                <Radar
-                                    key={key}
-                                    name={key}
-                                    dataKey={key}
-                                    stroke={chartColors[index % chartColors.length]}
-                                    fill={chartColors[index % chartColors.length]}
-                                    fillOpacity={0.6}
-                                    label={{
-                                formatter: (value) => value.toFixed(1),
-                                fill: '#666',
-                                fontSize: 12,
-                                position: 'outside'
-                            }}
-                                />
-                            ))}
-                            <Legend />
-                            <Tooltip />
-                        </RadarChart>
-                    </ResponsiveContainer>
-                </div>
-            );
-            
+                break;
+                case 'radar':
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <RadarChart cx="50%" cy="50%" outerRadius={80} data={chartData}>
+                                <PolarGrid />
+                                <PolarAngleAxis dataKey="name" />
+                                <PolarRadiusAxis />
+                                {dataKeys.map((key, index) => (
+                                    <Radar
+                                        key={key}
+                                        name={key}
+                                        dataKey={key}
+                                        stroke={chartColors[index % chartColors.length]}
+                                        fill={chartColors[index % chartColors.length]}
+                                        fillOpacity={0.6}
+                                        label={{
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12,
+                                            position: 'outside'
+                                        }}
+                                    />
+                                ))}
+                                <Legend />
+                                <Tooltip />
+                            </RadarChart>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+                
             case 'scatter':
-    return (
-        <div style={chartStyle}>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-                <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                        type="category"
-                        dataKey="year"
-                        name="Year"
-                        allowDuplicatedCategory={false}
-                    />
-                    <YAxis 
-                        type="number" 
-                        dataKey="sales"
-                        name="Sales"
-                    />
-                    <Tooltip 
-                        cursor={{ strokeDasharray: '3 3' }}
-                        formatter={(value, name) => {
-                            return typeof value === 'number' ? 
-                                [value.toFixed(2), name] : [value, name];
-                        }}
-                        labelFormatter={(value, payload) => {
-                            if (payload && payload.length > 0) {
-                                return `${payload[0].payload.subCategory} (${value})`;
-                            }
-                            return value;
-                        }}
-                    />
-                    <Legend />
-                    {Array.from(new Set(chartData.map(item => item.subCategory))).map((category, index) => (
-                        <Scatter
-                            key={category}
-                            name={category}
-                            data={chartData.filter(item => item.subCategory === category)}
-                            fill={chartColors[index % chartColors.length]}
-                        />
-                    ))}
-                </ScatterChart>
-            </ResponsiveContainer>
-        </div>
-    );
-            
-        case 'funnel':
-            // For funnel charts, we'll use a simple Bar chart with some styling
-            return (
-                <div style={chartStyle}>
-                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                    <ResponsiveContainer width="100%" height="90%">
-                        <BarChart 
-                            data={chartData}
-                            layout="vertical"
-                            barCategoryGap={1}
-                            maxBarSize={40}
-                        >
-                            <XAxis type="number" hide />
-                            <YAxis 
-                                dataKey="name" 
-                                type="category" 
-                                width={100}
-                                axisLine={false}
-                                tickLine={false}
-                            />
-                            <Tooltip />
-                            <Legend />
-                            {dataKeys.map((key, index) => (
-                                <Bar 
-                                    key={key} 
-                                    dataKey={key} 
-                                    fill={chartColors[index % chartColors.length]} 
-                                    name={key}
-                                    label={{
-                                position: 'right',
-                                formatter: (value) => value.toFixed(1),
-                                fill: '#666',
-                                fontSize: 12
-                            }}
-                                    shape={(props) => {
-                                        // Create trapezoid shape for funnel effect
-                                        const { x, y, width, height } = props;
-                                        return (
-                                            <path
-                                                d={`M${x},${y} L${x + width * 0.95},${y} L${x + width},${y + height} L${x},${y + height} Z`}
-                                                fill={props.fill}
-                                            />
-                                        );
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <ScatterChart>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis 
+                                    type="category"
+                                    dataKey="year"
+                                    name="Year"
+                                    allowDuplicatedCategory={false}
+                                />
+                                <YAxis 
+                                    type="number" 
+                                    dataKey="sales"
+                                    name="Sales"
+                                />
+                                <Tooltip 
+                                    cursor={{ strokeDasharray: '3 3' }}
+                                    formatter={(value, name) => {
+                                        return typeof value === 'number' ? 
+                                            [value.toFixed(2), name] : [value, name];
+                                    }}
+                                    labelFormatter={(value, payload) => {
+                                        if (payload && payload.length > 0) {
+                                            return `${payload[0].payload.subCategory} (${value})`;
+                                        }
+                                        return value;
                                     }}
                                 />
-                            ))}
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            );
-            
-        case 'radialbar':
-            return (
-                <div style={chartStyle}>
-                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                    <ResponsiveContainer width="100%" height="90%">
-                        <RadialBarChart 
-                            cx="50%" 
-                            cy="50%" 
-                            innerRadius="20%" 
-                            outerRadius="80%" 
-                            data={chartData}
-                            startAngle={180} 
-                            endAngle={0}
-                        >
-                            <RadialBar
-                                label={{
-                            position: 'insideEnd',
-                            fill: '#fff',
-                            formatter: (value) => `${value.toFixed(1)}`,
-                            fontSize: 12
-                        }}
-                                background
-                                dataKey={dataKeys[0]}
+                                <Legend />
+                                {Array.from(new Set(chartData.map(item => item.subCategory))).map((category, index) => (
+                                    <Scatter
+                                        key={category}
+                                        name={category}
+                                        data={chartData.filter(item => item.subCategory === category)}
+                                        fill={chartColors[index % chartColors.length]}
+                                    />
+                                ))}
+                            </ScatterChart>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+                
+            case 'funnel':
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <BarChart 
+                                data={chartData}
+                                layout="vertical"
+                                barCategoryGap={1}
+                                maxBarSize={40}
+                            >
+                                <XAxis type="number" hide />
+                                <YAxis 
+                                    dataKey="name" 
+                                    type="category" 
+                                    width={100}
+                                    axisLine={false}
+                                    tickLine={false}
+                                />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index) => (
+                                    <Bar 
+                                        key={key} 
+                                        dataKey={key} 
+                                        fill={chartColors[index % chartColors.length]} 
+                                        name={key}
+                                        label={{
+                                            position: 'right',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
+                                        shape={(props) => {
+                                            // Create trapezoid shape for funnel effect
+                                            const { x, y, width, height } = props;
+                                            return (
+                                                <path
+                                                    d={`M${x},${y} L${x + width * 0.95},${y} L${x + width},${y + height} L${x},${y + height} Z`}
+                                                    fill={props.fill}
+                                                />
+                                            );
+                                        }}
+                                    />
+                                ))}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+                
+            case 'radialbar':
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <RadialBarChart 
+                                cx="50%" 
+                                cy="50%" 
+                                innerRadius="20%" 
+                                outerRadius="80%" 
+                                data={chartData}
+                                startAngle={180} 
+                                endAngle={0}
+                            >
+                                <RadialBar
+                                    label={{
+                                        position: 'insideEnd',
+                                        fill: '#fff',
+                                        formatter: (value) => `${value.toFixed(1)}`,
+                                        fontSize: 12
+                                    }}
+                                    background
+                                    dataKey={dataKeys[0]}
+                                >
+                                    {chartData.map((entry, index) => (
+                                        <Cell 
+                                            key={`cell-${index}`} 
+                                            fill={chartColors[index % chartColors.length]} 
+                                        />
+                                    ))}
+                                </RadialBar>
+                                <Legend 
+                                    iconSize={10} 
+                                    layout="vertical" 
+                                    verticalAlign="middle" 
+                                    align="right"
+                                />
+                                <Tooltip />
+                            </RadialBarChart>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+                
+            case 'composed':
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <ComposedChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                {dataKeys.map((key, index, array) => {
+                                    if (index === 0) {
+                                        return (
+                                            <Bar 
+                                                key={key} 
+                                                dataKey={key} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                                name={key}
+                                                label={{
+                                                    position: 'top',
+                                                    formatter: (value) => value.toFixed(1),
+                                                    fill: '#666',
+                                                    fontSize: 12
+                                                }}
+                                            />
+                                        );
+                                    } else if (index === 1) {
+                                        return (
+                                            <Line 
+                                                key={key}
+                                                type="monotone"
+                                                dataKey={key}
+                                                stroke={chartColors[index % chartColors.length]}
+                                                name={key}
+                                                label={{
+                                                    position: 'top',
+                                                    formatter: (value) => value.toFixed(1),
+                                                    fill: '#666',
+                                                    fontSize: 12
+                                                }}
+                                            />
+                                        );
+                                    } else if (index === 2) {
+                                        return (
+                                            <Area
+                                                key={key}
+                                                type="monotone"
+                                                dataKey={key}
+                                                fill={chartColors[index % chartColors.length]}
+                                                stroke={chartColors[index % chartColors.length]}
+                                                fillOpacity={0.6}
+                                                name={key}
+                                                label={{
+                                                    position: 'top',
+                                                    formatter: (value) => value.toFixed(1),
+                                                    fill: '#666',
+                                                    fontSize: 12
+                                                }}
+                                            />
+                                        );
+                                    }
+                                    return null;
+                                })}
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+                case 'treemap':
+                const CustomizedTreemapContent = (props) => {
+                    const { depth, x, y, width, height, name, value } = props;
+                    return (
+                        <g>
+                            <rect
+                                x={x}
+                                y={y}
+                                width={width}
+                                height={height}
+                                style={{
+                                    fill: props.fill || '#8884d8',
+                                    stroke: '#fff',
+                                    strokeWidth: 2 / (depth + 1e-10),
+                                    strokeOpacity: 1 / (depth + 1e-10),
+                                }}
+                            />
+                            {width > 50 && height > 30 ? (
+                                <text
+                                    x={x + width / 2}
+                                    y={y + height / 2}
+                                    textAnchor="middle"
+                                    dominantBaseline="middle"
+                                    fill="#fff"
+                                    fontSize={12}
+                                >
+                                    {name}: {value !== undefined ? value.toFixed(1) : ''}
+                                </text>
+                            ) : null}
+                        </g>
+                    );
+                };
+    
+                chartContent = (
+                    <>
+                        <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
+                        <ResponsiveContainer width="100%" height="90%">
+                            <Treemap
+                                data={chartData.map(item => ({
+                                    name: item.name,
+                                    size: item[dataKeys[0]],
+                                    value: item[dataKeys[0]]
+                                }))}
+                                dataKey="size"
+                                aspectRatio={4/3}
+                                stroke="#fff"
+                                fill={chartColors[0]}
+                                content={<CustomizedTreemapContent />}
                             >
                                 {chartData.map((entry, index) => (
                                     <Cell 
@@ -1464,121 +1840,17 @@ const CustomizedTreemapContent = (props) => {
                                         fill={chartColors[index % chartColors.length]} 
                                     />
                                 ))}
-                            </RadialBar>
-                            <Legend 
-                                iconSize={10} 
-                                layout="vertical" 
-                                verticalAlign="middle" 
-                                align="right"
-                            />
-                            <Tooltip />
-                        </RadialBarChart>
-                    </ResponsiveContainer>
-                </div>
-            );
-            
-        case 'composed':
-            return (
-                <div style={chartStyle}>
-                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                    <ResponsiveContainer width="100%" height="90%">
-                        <ComposedChart data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip />
-                            <Legend />
-                            {dataKeys.map((key, index, array) => {
-                                if (index === 0) {
-                                    return (
-                                        <Bar 
-                                            key={key} 
-                                            dataKey={key} 
-                                            fill={chartColors[index % chartColors.length]} 
-                                            name={key}
-                                            label={{
-                                            position: 'top',
-                                            formatter: (value) => value.toFixed(1),
-                                            fill: '#666',
-                                            fontSize: 12
-                                        }}
-                                        />
-                                    );
-                                } else if (index === 1) {
-                                    return (
-                                        <Line 
-                                            key={key}
-                                            type="monotone"
-                                            dataKey={key}
-                                            stroke={chartColors[index % chartColors.length]}
-                                            name={key}
-                                            label={{
-                                            position: 'top',
-                                            formatter: (value) => value.toFixed(1),
-                                            fill: '#666',
-                                            fontSize: 12
-                                        }}
-                                        />
-                                    );
-                                } else if (index === 2) {
-                                    return (
-                                        <Area
-                                            key={key}
-                                            type="monotone"
-                                            dataKey={key}
-                                            fill={chartColors[index % chartColors.length]}
-                                            stroke={chartColors[index % chartColors.length]}
-                                            fillOpacity={0.6}
-                                            name={key}
-                                            label={{
-                                            position: 'top',
-                                            formatter: (value) => value.toFixed(1),
-                                            fill: '#666',
-                                            fontSize: 12
-                                        }}
-                                        />
-                                    );
-                                }
-                                return null;
-                            })}
-                        </ComposedChart>
-                    </ResponsiveContainer>
-                </div>
-            );
-            
-        case 'treemap':
-            return (
-                <div style={chartStyle}>
-                    <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-                    <ResponsiveContainer width="100%" height="90%">
-                        <Treemap
-                            data={chartData.map(item => ({
-                                name: item.name,
-                                size: item[dataKeys[0]],
-                                value: item[dataKeys[0]]
-                            }))}
-                            dataKey="size"
-                            aspectRatio={4/3}
-                            stroke="#fff"
-                            fill={chartColors[0]}
-                            content={<CustomizedTreemapContent />}
-                        >
-                            {chartData.map((entry, index) => (
-                                <Cell 
-                                    key={`cell-${index}`} 
-                                    fill={chartColors[index % chartColors.length]} 
-                                />
-                            ))}
-                            <Tooltip formatter={(value) => [`${value}`, dataKeys[0]]} />
-                        </Treemap>
-                    </ResponsiveContainer>
-                </div>
-            );
-            
+                                <Tooltip formatter={(value) => [`${value}`, dataKeys[0]]} />
+                            </Treemap>
+                        </ResponsiveContainer>
+                    </>
+                );
+                break;
+                
             default:
-              
-                return (
-                    <div style={chartStyle}>
+                // Default to bar chart if type is not recognized
+                chartContent = (
+                    <>
                         <h3 className="text-sm font-semibold m-2">{chartTitle} (Bar Chart)</h3>
                         <ResponsiveContainer width="100%" height="90%">
                             <BarChart data={chartData}>
@@ -1594,20 +1866,57 @@ const CustomizedTreemapContent = (props) => {
                                         fill={chartColors[index % chartColors.length]} 
                                         name={key}
                                         label={{
-                                position: 'top',
-                                formatter: (value) => value.toFixed(1),
-                                fill: '#666',
-                                fontSize: 12
-                            }}
+                                            position: 'top',
+                                            formatter: (value) => value.toFixed(1),
+                                            fill: '#666',
+                                            fontSize: 12
+                                        }}
                                     />
                                 ))}
                             </BarChart>
                         </ResponsiveContainer>
-                    </div>
+                    </>
                 );
-    
         }
-    };
+    
+        // Return the chart with resize handle if selected
+        return (
+            <div 
+    style={chartStyle} 
+    className="chart-container"
+    onClick={(e) => {
+        e.stopPropagation();
+        setSelectedChart({ row: startCell.row, col: startCell.col });
+    }}
+>
+    {chartContent}
+    
+    {/* Add resize handle if chart is selected */}
+    {isSelected && (
+        <div 
+            className="chart-resize-handle"
+            style={{
+                position: 'absolute',
+                right: 0,
+                bottom: 0,
+                width: '20px',
+                height: '20px',
+                background: 'rgba(0, 120, 215, 0.9)',
+                cursor: 'nwse-resize',
+                borderTop: '3px solid white',
+                borderLeft: '3px solid white',
+                borderTopLeftRadius: '5px',
+                zIndex: 100
+            }}
+            onMouseDown={(e) => {
+                e.stopPropagation();
+                handleResizeStart(e);
+            }}
+        />
+    )}
+</div>
+        );
+    }, [chartSizes, selectedChart, handleResizeStart]);
     
     // Expose createChart to parent components
     useImperativeHandle(ref, () => ({
@@ -1622,7 +1931,7 @@ const CustomizedTreemapContent = (props) => {
         width: `${100 * (100 / zoomLevel)}%`
     };
 
-    // Add this function to format cell values
+    // Format cell values
     const formatCellValue = (value, rowIndex, colIndex) => {
         if (value === '' || value === null || value === undefined) return '';
         
@@ -1653,7 +1962,7 @@ const CustomizedTreemapContent = (props) => {
         return formattedValue;
     };
 
-    // Add this function to get cell styles
+    // Get cell styles
     const getCellStyle = (rowIndex, colIndex) => {
         const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
         return {
@@ -1694,34 +2003,34 @@ const CustomizedTreemapContent = (props) => {
             }}
         >
            {typeof row[colIndex] === 'string' && row[colIndex]?.startsWith('CHART:') ? (
-    row[colIndex].includes(':START') && (() => {
-        const parts = row[colIndex].split(':');
-        try {
-            // Extract the chart configuration from the cell value
-            const chartConfigStr = parts.slice(1, -1).join(':');
-            console.log("Extracted chart config string length:", chartConfigStr.length);
-            
-            const chartConfig = JSON.parse(chartConfigStr);
-            console.log("Extracted chart data length:", chartConfig?.data?.length || 0);
-            
-            // Validate the chart data
-            if (!chartConfig.data || !Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
-                console.error("Invalid chart data extracted:", chartConfig.data);
-                return <div className="p-4 bg-red-50 text-red-700">
-                    Chart data is missing or invalid
-                </div>;
-            }
-            
-            // Render the chart with the extracted configuration
-            return renderChart(chartConfig.type || 'bar', { row: rowIndex, col: colIndex }, chartConfig);
-        } catch (error) {
-            console.error("Error parsing chart config from cell:", error);
-            return <div className="p-4 bg-red-50 text-red-700">
-                Error parsing chart: {error.message}
-            </div>;
-        }
-    })()
-) : (
+                row[colIndex].includes(':START') && (() => {
+                    const parts = row[colIndex].split(':');
+                    try {
+                        // Extract the chart configuration from the cell value
+                        const chartConfigStr = parts.slice(1, -1).join(':');
+                        console.log("Extracted chart config string length:", chartConfigStr.length);
+                        
+                        const chartConfig = JSON.parse(chartConfigStr);
+                        console.log("Extracted chart data length:", chartConfig?.data?.length || 0);
+                        
+                        // Validate the chart data
+                        if (!chartConfig.data || !Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
+                            console.error("Invalid chart data extracted:", chartConfig.data);
+                            return <div className="p-4 bg-red-50 text-red-700">
+                                Chart data is missing or invalid
+                            </div>;
+                        }
+                        
+                        // Render the chart with the extracted configuration
+                        return renderChart(chartConfig.type || 'bar', { row: rowIndex, col: colIndex }, chartConfig);
+                    } catch (error) {
+                        console.error("Error parsing chart config from cell:", error);
+                        return <div className="p-4 bg-red-50 text-red-700">
+                            Error parsing chart: {error.message}
+                        </div>;
+                    }
+                })()
+            ) : (
                 <input
                     type="text"
                     value={
@@ -1754,6 +2063,7 @@ const CustomizedTreemapContent = (props) => {
         </td>
     );
 
+    // Main render function
     return (
         <div className="h-full flex flex-col relative">
             {/* Hidden file input */}
@@ -1765,7 +2075,7 @@ const CustomizedTreemapContent = (props) => {
                 className="hidden"
             />
             
-            {/* Add Formula Bar */}
+            {/* Formula Bar */}
             <div className="flex items-center px-2 py-1 border-b border-gray-200">
                 <div className="flex items-center bg-white border border-gray-300 rounded px-2">
                     <span className="text-gray-500 mr-2">fx</span>
@@ -1798,56 +2108,54 @@ const CustomizedTreemapContent = (props) => {
                         }}
                     >
                         {showHeaders && (
-                    <thead>
-                        <tr>
-                                <th 
-                                    className="bg-gray-100 border border-gray-300 sticky top-0 left-0 z-20"
-                                    style={{ 
-                                        width: `${ROW_HEADER_WIDTH}px`,
-                                        height: `${CELL_HEIGHT}px`
-                                    }}
-                                ></th>
-                            {headers.map((header, index) => (
-                                <th 
-                                    key={index} 
-                                        className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky top-0 z-10 overflow-hidden text-ellipsis whitespace-nowrap"
+                            <thead>
+                                <tr>
+                                    <th 
+                                        className="bg-gray-100 border border-gray-300 sticky top-0 left-0 z-20"
                                         style={{ 
-                                            width: `${CELL_WIDTH}px`,
-                                            height: `${CELL_HEIGHT}px`,
-                                            minWidth: `${CELL_WIDTH}px`,
-                                            maxWidth: `${CELL_WIDTH}px`
+                                            width: `${ROW_HEADER_WIDTH}px`,
+                                            height: `${CELL_HEIGHT}px`
                                         }}
-                                >
-                                    {header}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
+                                    ></th>
+                                    {headers.map((header, index) => (
+                                        <th 
+                                            key={index} 
+                                            className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky top-0 z-10 overflow-hidden text-ellipsis whitespace-nowrap"
+                                            style={{ 
+                                                width: `${CELL_WIDTH}px`,
+                                                height: `${CELL_HEIGHT}px`,
+                                                minWidth: `${CELL_WIDTH}px`,
+                                                maxWidth: `${CELL_WIDTH}px`
+                                            }}
+                                        >
+                                            {header}
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
                         )}
-                    <tbody>
-                        {data.map((row, rowIndex) => (
-                            <tr key={rowIndex}>
+                        <tbody>
+                            {data.map((row, rowIndex) => (
+                                <tr key={rowIndex}>
                                     {showHeaders && (
                                         <td 
                                             className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky left-0 z-10"
-                                        style={{ 
+                                            style={{ 
                                                 width: `${ROW_HEADER_WIDTH}px`,
                                                 height: `${CELL_HEIGHT}px`,
                                                 minHeight: `${CELL_HEIGHT}px`
-                                        }}
-                                    >
+                                            }}
+                                        >
                                             {rowIndex + 1}
-                                    </td>
+                                        </td>
                                     )}
                                     {headers.map((_, colIndex) => cellContent(rowIndex, colIndex, row))}
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            </div>
-
-            
             {/* Floating action buttons */}
             <div className="absolute bottom-8 right-8 flex space-x-2">
                 <button
@@ -1869,8 +2177,39 @@ const CustomizedTreemapContent = (props) => {
                     </svg>
                 </button>
             </div>
+            
+            {/* Render chart controls if a chart is selected */}
+            {renderChartControls()}
+            
+            {isResizing && selectedChart && (
+    <div 
+        className="resize-preview"
+        style={{
+            position: 'absolute',
+            left: `${selectedChart.col * CELL_WIDTH + (showHeaders ? ROW_HEADER_WIDTH : 0)}px`,
+            top: `${selectedChart.row * CELL_HEIGHT + (showHeaders ? CELL_HEIGHT : 0)}px`,
+            width: `${(chartSizes[`${selectedChart.row}-${selectedChart.col}`] || 
+                    getChartConfig(selectedChart.row, selectedChart.col)?.size || 
+                    DEFAULT_CHART_SIZE).width * CELL_WIDTH}px`,
+            height: `${(chartSizes[`${selectedChart.row}-${selectedChart.col}`] || 
+                     getChartConfig(selectedChart.row, selectedChart.col)?.size || 
+                     DEFAULT_CHART_SIZE).height * CELL_HEIGHT}px`,
+            border: '3px dashed #0078d7',
+            backgroundColor: 'rgba(0, 120, 215, 0.2)',
+            pointerEvents: 'none',
+            zIndex: 1000
+        }}
+    />
+)}
+            
+            {/* Debug info for chart selection - remove in production */}
+            {selectedChart && process.env.NODE_ENV === 'development' && (
+                <div className="absolute top-4 left-4 p-2 bg-white shadow-lg rounded text-xs">
+                    Selected chart: Row {selectedChart.row}, Col {selectedChart.col}
+                </div>
+            )}
         </div>
     );
 });
 
-export default DataGrid; 
+export default DataGrid;
