@@ -9,6 +9,7 @@ from models.record import Record
 from routes.agents.classifier import RequestClassifier
 from routes.agents.visualization import DataVizualizationAgent
 from routes.agents.transformation import DataTransformationAgent
+from routes.agents.statistical import StatisticalAgent  # Import the new StatisticalAgent
 from routes.agents.query_bot import QueryBot
 from models.user import User
 
@@ -27,7 +28,8 @@ class AnalysisRequest(BaseModel):
 request_classifier = RequestClassifier()
 data_visualization_agent = DataVizualizationAgent()
 data_transformation_agent = DataTransformationAgent()
-query_bot = QueryBot()  # Initialize the QueryBot
+statistical_agent = StatisticalAgent()  # Initialize the StatisticalAgent
+query_bot = QueryBot()
 
 @router.post("/analyze2")
 async def analyze(
@@ -46,7 +48,9 @@ async def analyze(
             return await data_visualization_agent.analyze(request, current_user)
         elif request_type == "transformation":
             return await data_transformation_agent.analyze(request, current_user)
-        elif request_type == "query":  # Add query support
+        elif request_type == "statistical":  # Add statistical support
+            return await statistical_agent.analyze(request, current_user)
+        elif request_type == "query":
             return await query_bot.analyze(request, current_user)
         else:
             # Default to query for any unhandled request types
