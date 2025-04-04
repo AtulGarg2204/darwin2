@@ -1,0 +1,63 @@
+Date,Region,Product,Units,Price,Revenue,Costs,Profit,Customer_Segment,Sales_Channel,Discount_Pct,Salesperson,Shipping_Cost,Customer_Satisfaction,Return_Rate_Pct
+2023-01-01,North,Widget A,120,25,3000,2100,900,Small Business,Online,12.8,Sarah Williams,50.35,3.9,3.5
+2023-01-15,North,Widget B,85,32,2720,1870,850,Government,Direct,24.6,John Smith,68.22,4.7,8.1
+2023-01-22,East,Widget A,95,25,2375,1662,713,Retail,Distributor,18.3,Maria Garcia,43.91,3.8,4.9
+2023-02-05,South,Widget C,143,15,2145,1502,643,Enterprise,Online,5.2,James Johnson,92.48,4.2,14.5
+2023-02-12,West,Widget B,56,32,1792,1075,717,Education,Retail Partner,27.5,Robert Brown,25.44,3.5,10.2
+2023-02-18,North,Widget C,72,15,1080,756,324,Small Business,Distributor,14.9,Lisa Davis,37.61,4.3,6.7
+2023-03-01,East,Widget A,130,25,3250,2275,975,Government,Direct,9.8,Sarah Williams,71.36,4.1,2.3
+2023-03-15,South,Widget B,67,32,2144,1501,643,Education,Online,16.7,John Smith,83.95,3.8,9.5
+2023-03-29,West,Widget C,99,15,1485,1040,445,Retail,Retail Partner,22.4,Maria Garcia,56.27,4.9,5.8
+2023-04-10,North,Widget A,145,25,3625,2538,1087,Enterprise,Distributor,8.3,Robert Brown,47.19,4.6,1.2
+2023-04-22,East,Widget B,78,32,2496,1747,749,Small Business,Online,19.5,James Johnson,32.67,3.7,7.6
+2023-05-05,South,Widget A,156,25,3900,2730,1170,Retail,Direct,11.2,Lisa Davis,78.53,4.5,3.4
+2023-05-18,West,Widget C,124,15,1860,1302,558,Government,Distributor,25.9,Sarah Williams,61.84,4.0,11.7
+2023-06-01,North,Widget B,95,32,3040,2128,912,Education,Retail Partner,7.6,John Smith,46.12,4.8,8.9
+2023-06-14,East,Widget C,85,15,1275,893,382,Enterprise,Online,15.4,Maria Garcia,94.75,3.6,4.2
+2023-07-23,West,Widget E,92,22,2024,1416,608,Small Business,Direct,23.8,Robert Brown,52.93,4.4,9.8
+2023-08-05,Southeast,Widget A,136,25,3400,2312,1088,Government,Distributor,19.7,James Johnson,65.41,3.5,6.1
+2023-08-19,North,Widget F,67,18,1206,869,337,Retail,Online,10.5,Lisa Davis,88.07,4.2,2.9
+2023-09-02,Central,Widget D,119,40,4760,3384,1376,Enterprise,Retail Partner,28.3,Sarah Williams,37.25,4.7,13.2
+2023-09-14,South,Widget B,73,32,2336,1635,701,Education,Distributor,4.9,John Smith,73.16,3.9,7.3
+2023-09-30,East,Widget A,164,25,4100,2911,1189,Small Business,Direct,26.7,Maria Garcia,49.58,4.1,5.4
+2023-10-12,Midwest,Widget C,83,15,1245,871,374,Government,Online,17.2,Robert Brown,58.39,3.8,10.6
+2023-10-27,Northwest,Widget E,171,22,3762,2633,1129,Retail,Distributor,13.6,James Johnson,86.42,4.5,8.8
+2023-11-08,West,Widget B,59,32,1888,1322,566,Enterprise,Retail Partner,20.1,Lisa Davis,41.63,3.7,4.7
+2023-11-22,North,Widget D,112,40,4480,3024,1456,Education,Direct,6.8,Sarah Williams,69.74,4.3,11.5
+2023-12-04,Southeast,Widget F,41,18,738,518,220,Small Business,Online,21.9,John Smith,29.87,4.0,9.2
+2023-12-18,South,Widget A,147,25,3675,2573,1102,Government,Distributor,15.8,Maria Garcia,80.19,4.6,3.8
+2024-01-05,Central,Widget C,91,15,1365,957,408,Retail,Retail Partner,2.3,Robert Brown,54.31,3.5,12.7
+2024-01-19,East,Widget E,152,22,3344,2307,1037,Enterprise,Online,29.4,James Johnson,77.65,4.4,6.5
+2024-02-01,North,Widget B,108,32,3456,2484,972,Education,Direct,18.7,Lisa Davis,38.96,3.9,2.1
+2024-02-15,Midwest,Widget F,46,18,828,597,231,Small Business,Distributor,8.9,Sarah Williams,92.53,4.2,14.3
+2024-03-03,Northwest,Widget D,127,40,5080,3658,1422,Government,Online,24.5,John Smith,63.87,4.8,7.9
+2024-03-16,West,Widget A,89,25,2225,1557,668,Retail,Retail Partner,11.3,Maria Garcia,45.27,3.6,5.6
+2024-03-29,South,Widget C,138,15,2070,1470,600,Enterprise,Distributor,27.6,Robert Brown,81.42,4.1,10.3
+2024-04-14,Southeast,Widget B,62,32,1984,1388,596,Education,Direct,16.5,James Johnson,34.79,3.8,8.4
+2024-04-28,East,Widget E,104,22,2288,1601,687,Small Business,Online,3.7,Lisa Davis,76.15,4.5,1.9
+2024-05-12,Central,Widget F,73,18,1314,935,379,Government,Retail Partner,22.8,Sarah Williams,51.68,3.7,13.8
+2024-05-28,North,Widget D,93,40,3720,2678,1042,Retail,Distributor,9.6,John Smith,67.23,4.3,6.7
+2024-06-10,Midwest,Widget A,175,25,4375,3019,1356,Enterprise,Online,25.3,Maria Garcia,42.91,4.9,3.2
+2024-06-22,Northwest,Widget C,115,15,1725,1208,517,Education,Direct,14.1,Robert Brown,89.74,4.0,9.6
+2024-07-07,South,Widget B,97,32,3104,2197,907,Small Business,Distributor,30.0,James Johnson,28.35,3.9,5.1
+2024-07-21,West,Widget E,163,22,3586,2547,1039,Government,Retail Partner,7.4,Lisa Davis,72.59,
+2024-07-21,West,Widget E,163,22,3586,2547,1039,Government,Retail Partner,7.4,Lisa Davis,72.59,4.7,2.7
+2024-08-05,Southeast,Widget D,102,40,4080,2938,1142,Retail,Online,19.2,Sarah Williams,47.83,3.5,14.1
+2024-08-18,East,Widget F,35,18,630,441,189,Enterprise,Distributor,26.1,John Smith,93.26,4.4,8.3
+2024-08-31,Central,Widget A,128,25,3200,2208,992,Education,Direct,13.9,Maria Garcia,39.47,4.0,4.5
+2024-09-15,North,Widget C,146,15,2190,1510,680,Small Business,Retail Partner,5.6,Robert Brown,84.12,3.8,11.9
+2024-09-28,Midwest,Widget B,81,32,2592,1866,726,Government,Online,17.8,James Johnson,60.73,4.6,7.2
+2024-10-12,Northwest,Widget E,183,22,4026,2779,1247,Retail,Distributor,29.7,Lisa Davis,31.58,3.7,3.6
+2024-10-24,West,Widget F,52,18,936,655,281,Enterprise,Direct,12.5,Sarah Williams,79.94,4.1,9.4
+2024-11-08,Southeast,Widget D,135,40,5400,3861,1539,Education,Online,1.9,John Smith,55.29,4.8,5.8
+2024-11-22,South,Widget A,154,25,3850,2703,1147,Small Business,Retail Partner,20.6,Maria Garcia,90.68,3.6,12.3
+2024-12-06,East,Widget C,107,15,1605,1123,482,Government,Distributor,27.2,Robert Brown,44.35,4.2,8.7
+2024-12-19,Central,Widget B,68,32,2176,1523,653,Retail,Online,15.3,James Johnson,70.81,3.9,2.4
+2025-01-03,North,Widget E,125,22,2750,1980,770,Enterprise,Direct,8.7,Lisa Davis,36.94,4.5,13.5
+2025-01-17,Midwest,Widget F,39,18,702,491,211,Education,Distributor,23.4,Sarah Williams,82.17,4.0,7.8
+2025-01-31,Northwest,Widget A,169,25,4225,2973,1252,Small Business,Retail Partner,10.8,John Smith,59.43,3.7,4.3
+2025-02-13,West,Widget C,131,15,1965,1404,561,Government,Online,28.1,Maria Garcia,96.72,4.4,10.9
+2025-02-26,Southeast,Widget B,103,32,3296,2307,989,Retail,Distributor,16.3,Robert Brown,33.86,3.8,6.2
+2025-03-12,South,Widget D,87,40,3480,2471,1009,Enterprise,Direct,4.1,James Johnson,75.19,4.7,1.5
+2025-03-25,East,Widget E,142,22,3124,2174,950,Education,Online,21.7,Lisa Davis,48.62,3.6,14.7
+2025-04-08,Central,Widget F,64,18,1152,783,369,Small Business,Retail Partner,14.5,Sarah Williams,87.34,4.3,9.1
