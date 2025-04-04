@@ -683,6 +683,14 @@ const isSheetEmpty = (sheet) => {
             zoomLevel={zoomLevel}
             setZoomLevel={setZoomLevel}
             onFormatChange={handleFormatChange}
+            activeCell={sheets[activeSheetId]?.activeCell || { row: 0, col: 0 }}
+  currentData={sheets[activeSheetId]?.data || []}
+  setCurrentData={(newData) => {
+    const updatedSheets = { ...sheets };
+    if (updatedSheets[activeSheetId]) {
+      updatedSheets[activeSheetId].data = newData;
+      handleUpdateSheetData(updatedSheets);
+    }}}
           />
           <div className="flex-1 overflow-hidden">
             <Routes>

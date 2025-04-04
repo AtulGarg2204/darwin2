@@ -209,7 +209,7 @@
 // export default Dashboard; 
 import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 
-import DataGrid from '../dashboard/DataGrid';
+import DataGrid from './DataGrid';
 import ChatInterface from '../chat/ChatInterface';
 import Toolbar from './Toolbar';
 import SheetTabs from './SheetTabs'; // New component
