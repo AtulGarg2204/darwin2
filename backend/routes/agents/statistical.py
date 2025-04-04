@@ -866,6 +866,7 @@ class StatisticalAgent:
             )
             
             # Return the final response
+            print(f"Chart configs: {len(chart_configs)}")
             return {
                 "text": interpretation,
                 "analysisType": analysis_package.get("analysis_type", "Statistical Analysis"),

@@ -47,7 +47,8 @@ async def test_statistical_agent():
         "Is there a correlation between units sold and profit?",
         "Compare the performance of different products and show me which one is most profitable.",
         "How has revenue changed over time? Can you identify any trends?",
-        "Analyze the profitability of each product and region combination."
+        "Analyze the profitability of each product and region combination and visualize it.",
+        "Perform a regression analysis to predict future sales based on historical data."
     ]
 
     # Initialize the agent
