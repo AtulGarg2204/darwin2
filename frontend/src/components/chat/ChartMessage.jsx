@@ -10,13 +10,7 @@ import {
 } from 'recharts';
 
 const ChartMessage = ({ data, chartConfig }) => {
-    console.log('ChartMessage received data:', {
-        dataPresent: !!data,
-        dataLength: Array.isArray(data) ? data.length : 0,
-        sampleData: Array.isArray(data) ? data.slice(0, 2) : null
-    });
-    console.log('ChartMessage received config:', chartConfig);
-
+   
     if (!data || !chartConfig) {
         console.error('Missing required props:', { 
             hasData: !!data, 
@@ -24,21 +18,20 @@ const ChartMessage = ({ data, chartConfig }) => {
         });
         return <div>Missing required data for chart visualization</div>;
     }
-
+    
     // Transform data to the format Recharts expects
     const transformData = () => {
-        console.log('ChartMessage: Starting data transformation');
+        
         
         try {
             // If we have direct chart data in the config, use it
             if (chartConfig.data && Array.isArray(chartConfig.data)) {
-                console.log('ChartMessage: Using data from chart config');
+               
                 return chartConfig.data;
             }
             
             // If we have Chart.js format JSON
             if (chartConfig.data?.labels && chartConfig.data?.datasets) {
-                console.log('ChartMessage: Processing Chart.js format data');
                 
                 const { labels, datasets } = chartConfig.data;
                 
@@ -64,16 +57,13 @@ const ChartMessage = ({ data, chartConfig }) => {
                     return item;
                 });
                 
-                console.log('ChartMessage: Transformed Chart.js data:', {
-                    count: transformed.length,
-                    sample: transformed.slice(0, 2)
-                });
+             
                 return transformed;
             }
             
             // If we have array data
             if (Array.isArray(data)) {
-                console.log('ChartMessage: Processing array data');
+              
                 
                 if (data.length === 0) {
                     console.error('Empty data array');
@@ -82,7 +72,7 @@ const ChartMessage = ({ data, chartConfig }) => {
                 
                 // If data is already formatted correctly, return as is
                 if ('name' in data[0]) {
-                    console.log('ChartMessage: Data already in correct format');
+               
                     return data;
                 }
                 
@@ -112,14 +102,9 @@ const ChartMessage = ({ data, chartConfig }) => {
                     return result;
                 });
 
-                console.log('ChartMessage: Transformed array data:', {
-                    count: transformed.length,
-                    sample: transformed.slice(0, 2)
-                });
                 return transformed;
             }
-            
-            console.error('Data format not recognized');
+  
             return [];
         } catch (error) {
             console.error('Error transforming data:', error);
@@ -128,11 +113,7 @@ const ChartMessage = ({ data, chartConfig }) => {
     };
 
     const chartData = transformData();
-    console.log('ChartMessage: Final chart data:', {
-        count: chartData.length,
-        sample: chartData.slice(0, 2),
-        keys: chartData.length > 0 ? Object.keys(chartData[0]) : []
-    });
+
     
     if (chartData.length === 0) {
         return <div>No data available for chart visualization</div>;
@@ -153,7 +134,7 @@ const ChartMessage = ({ data, chartConfig }) => {
         // Otherwise, get all keys except 'name'
         if (chartData.length > 0) {
             const keys = Object.keys(chartData[0]).filter(key => key !== 'name');
-            console.log('ChartMessage: Extracted data keys:', keys);
+           
             return keys;
         }
         
@@ -161,7 +142,7 @@ const ChartMessage = ({ data, chartConfig }) => {
     };
     
     const dataKeys = getDataKeys();
-    console.log('ChartMessage: Using data keys:', dataKeys);
+
     
     // Function to generate consistent colors or use provided colors
     const getColors = () => {
@@ -189,7 +170,6 @@ const ChartMessage = ({ data, chartConfig }) => {
             return <div>No data available for chart</div>;
         }
 
-        console.log('Rendering chart with type:', chartType);
         
         switch (chartType) {
             case 'bar':

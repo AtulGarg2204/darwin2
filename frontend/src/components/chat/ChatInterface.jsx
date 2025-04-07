@@ -477,18 +477,40 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                 }
             });
             
+            // Check if the user's message contains phrases about creating a chart
+            const chartRequestRegex = /\b(create|generate|make|draw|show|plot)\b.*?\b(chart|graph|plot|viz|visualization)\b/i;
+            const isChartRequest = chartRequestRegex.test(input);
+            
+            // Force null targetSheetId for chart requests unless explicitly mentioned
+            const explicitTargetRegex = /\bin\s+sheet\s+(\w+)\b|\bon\s+sheet\s+(\w+)\b|\bin\s+the\s+(\w+)\s+sheet\b/i;
+            const targetMatch = input.match(explicitTargetRegex);
+            
+            // Only set explicit target if we found a match and it's a valid sheet
+            let explicitTargetSheetId = null;
+            if (targetMatch) {
+                const possibleSheetName = targetMatch[1] || targetMatch[2] || targetMatch[3];
+                // Find sheet by name
+                for (const [id, sheet] of Object.entries(sheets)) {
+                    if (sheet.name.toLowerCase() === possibleSheetName.toLowerCase()) {
+                        explicitTargetSheetId = id;
+                        break;
+                    }
+                }
+            }
+            
             const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/chat/analyze2`, {
                 message: input,
                 relevantData,
                 sheets,
                 activeSheetId,
-                explicitTargetSheetId: null,
+                explicitTargetSheetId: explicitTargetSheetId,
+                isChartRequest: isChartRequest
             }, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
-
+            console.log("RESPNSE DATA", response);
             const { data: responseData } = response;
             const { text, chartConfig, sourceSheetId, targetSheetId, transformedData } = responseData;
             
@@ -500,7 +522,18 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
             setMessages(newMessages);
             
             if (chartConfig && onChartRequest) {
-                onChartRequest(chartConfig, sourceSheetId, targetSheetId);
+                // If this is a chart request and no explicit target was specified,
+                // pass null to create a new sheet
+                const finalTargetSheetId = isChartRequest && !explicitTargetSheetId ? null : targetSheetId;
+                
+                console.log("Calling onChartRequest with:", {
+                    chartType: chartConfig.type,
+                    sourceSheetId,
+                    targetSheetId: finalTargetSheetId,
+                    isNewSheet: finalTargetSheetId === null
+                });
+                
+                onChartRequest(chartConfig, sourceSheetId, finalTargetSheetId);
             } else if (transformedData && onChartRequest) {
                 const emptySheetId = findFirstEmptySheet();
                 
