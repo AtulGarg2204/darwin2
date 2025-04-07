@@ -875,7 +875,7 @@ class StatisticalAgent:
             return {
                 "text": interpretation,
                 "analysisType": analysis_package.get("analysis_type", "Statistical Analysis"),
-                "chartConfigs": chart_configs,
+                "chartConfig": chart_configs,
                 "sourceSheetId": primary_sheet_id,
                 "targetSheetId": target_sheet_id,
                 "operation": "statistical",
