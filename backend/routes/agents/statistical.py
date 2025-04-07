@@ -128,7 +128,7 @@ class StatisticalAgent:
                 profile["numeric_columns"].append(col)
                 stats_dict = df[col].describe().to_dict()
                 # Convert numpy types to Python types
-                col_stats = {k: float(v) if isinstance(v, (np.int_, np.float_)) else v 
+                col_stats = {k: float(v) if isinstance(v, (np.int64, np.float64)) else v 
                              for k, v in stats_dict.items()}
                 
                 col_info.update(col_stats)
@@ -506,7 +506,7 @@ class StatisticalAgent:
             return obj.to_dict()
         elif isinstance(obj, np.ndarray):
             return obj.tolist()
-        elif isinstance(obj, (np.int_, np.float_)):
+        elif isinstance(obj, (np.int64, np.float64)):
             return float(obj)
         elif isinstance(obj, dict):
             return {k: self._make_serializable(v) for k, v in obj.items()}
