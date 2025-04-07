@@ -52,12 +52,13 @@ class RequestClassifier:
         - Specific analysis types like "correlation", "regression", "t-test", "chi-square", "ANOVA"
         - Statistical concepts like "distribution", "normality", "variance", "standard deviation"
         - "find relationships", "compare groups", "determine if significant"
+        - Time series analysis, "trend analysis", "seasonality", "forecasting"
+        - Comparative analysis, "compare", "contrast", "differences between groups"
+        - Exploratory data analysis, "explore", "discover patterns", "identify anomalies"
 
         For query (conversational questions), look for:
-        - Simple questions about the data that don't require transformation or visualization
-        - "what is", "how many", "tell me about", "describe", "explain"
-        - Questions that seek information rather than specific operations
-        - Conversational language without explicit operation requests
+        - Simple questions that ask for information about the data.
+        - Do not require much analysis or transformation.
 
         Provide a JSON response with:
         1. intent: Either 'visualization', 'transformation', 'statistical', or 'query'

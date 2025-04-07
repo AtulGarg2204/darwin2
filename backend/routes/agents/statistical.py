@@ -283,8 +283,13 @@ class StatisticalAgent:
            - IMPORTANT: For safety, use the provided safe_groupby_agg function for any groupby operations:
               safe_groupby_agg(df, ['groupby_column'], {{'value_column': 'mean'}})
            - DO NOT include markdown formatting (```python) in your code
+
+            IMPORTANT SAFETY CHECKS:
+            - ALWAYS check if a function return value is None before using it
+            - Especially for safe_groupby_agg function which may return None
+            - Example: result = safe_groupby_agg(...); if result is not None: # then use result
         
-        4. visualizations: Array of visualization specifications, each with:
+        4. visualizations(must be included): Array of visualization specifications, each with:
            - type: Chart type (bar, line, scatter, pie, heatmap)
            - title: Chart title
            - x_axis: Column for x-axis
