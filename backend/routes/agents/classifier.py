@@ -78,7 +78,7 @@ class RequestClassifier:
                 {"role": "system", "content": "You are a classification API. Return only the JSON response as specified in the example response format. Do not include markdown formatting or code blocks."},
                 {"role": "user", "content": classification_prompt}
             ],
-            temperature=0.4,
+            temperature=0.1,
             max_tokens=200
         )
         
