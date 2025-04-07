@@ -342,7 +342,7 @@ class StatisticalAgent:
                 {"role": "system", "content": "You are a statistical analysis API that returns robust, executable Python code without markdown formatting."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.2,
+            temperature=0.4,
             response_format={"type": "json_object"}
         )
         
