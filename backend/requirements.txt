@@ -18,3 +18,4 @@ matplotlib
 numpy
 scikit-learn
 scikit-image
+seaborn
