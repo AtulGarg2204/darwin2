@@ -513,13 +513,23 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
             console.log("RESPONSE DATA", response);
             const { data: responseData } = response;
             
-            // Handle different response types
-            let chartConfigData = null;
-            let sourceSheetId = null;
-            let targetSheetId = null;
-            let transformedData = null;
-            let text = "";
+            // Extract the assistant's response text with a fallback
+            const assistantText = responseData.text || "I've analyzed your data.";
             
+            // Update messages with response and chart config
+            const newMessages = [
+                ...messages,
+                { sender: 'user', text: input },
+                { 
+                    sender: 'assistant', 
+                    text: assistantText, 
+                    chartConfig: responseData.chartConfig 
+                }
+            ];
+            
+            setMessages(newMessages);
+            
+            // Handle different response types for various operations
             if (responseData.operation === "statistics" && Array.isArray(responseData.chartConfig) && onChartRequest) {
                 // Handle statistical analysis with multiple charts
                 console.log("Processing statistical analysis with", responseData.chartConfig.length, "charts");
@@ -554,44 +564,6 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                 const parsedFile = {
                     name: "Transformed Data",
                     parsedData: responseData.transformedData,
-                    type: 'application/json'
-                };
-                
-                onChartRequest(null, null, emptySheetId || null, parsedFile);
-            }
-            
-            // Update messages with response
-            const newMessages = [
-                ...messages,
-                { sender: 'user', text: input },
-                { sender: 'assistant', text, chartConfig: chartConfigData }
-            ];
-            setMessages(newMessages);
-            
-            // Handle different types of requests
-            if (responseData.operation === "statistics" && Array.isArray(chartConfigData) && onChartRequest) {
-                // Handle statistical analysis with multiple charts
-                console.log("Processing statistical analysis with", chartConfigData.length, "charts");
-                onChartRequest(chartConfigData, sourceSheetId, explicitTargetSheetId || targetSheetId);
-            } else if (chartConfigData && onChartRequest) {
-                // If this is a chart request and no explicit target was specified,
-                // pass null to create a new sheet
-                const finalTargetSheetId = isChartRequest && !explicitTargetSheetId ? null : targetSheetId;
-                
-                console.log("Calling onChartRequest with:", {
-                    chartType: chartConfigData.type,
-                    sourceSheetId,
-                    targetSheetId: finalTargetSheetId,
-                    isNewSheet: finalTargetSheetId === null
-                });
-                
-                onChartRequest(chartConfigData, sourceSheetId, finalTargetSheetId);
-            } else if (transformedData && onChartRequest) {
-                const emptySheetId = findFirstEmptySheet();
-                
-                const parsedFile = {
-                    name: "Transformed Data",
-                    parsedData: transformedData,
                     type: 'application/json'
                 };
                 
@@ -695,9 +667,6 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                         Send
                     </button>
                 </div>
-                
-              
-              
             </form>
             
             {/* Context menu */}
