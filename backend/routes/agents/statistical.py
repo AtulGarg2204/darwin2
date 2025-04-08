@@ -283,13 +283,8 @@ class StatisticalAgent:
            - IMPORTANT: For safety, use the provided safe_groupby_agg function for any groupby operations:
               safe_groupby_agg(df, ['groupby_column'], {{'value_column': 'mean'}})
            - DO NOT include markdown formatting (```python) in your code
-
-            IMPORTANT SAFETY CHECKS:
-            - ALWAYS check if a function return value is None before using it
-            - Especially for safe_groupby_agg function which may return None
-            - Example: result = safe_groupby_agg(...); if result is not None: # then use result
         
-        4. visualizations(must be included): Array of visualization specifications, each with:
+        4. visualizations: Array of visualization specifications, each with:
            - type: Chart type (bar, line, scatter, pie, heatmap)
            - title: Chart title
            - x_axis: Column for x-axis
@@ -332,6 +327,12 @@ class StatisticalAgent:
         else:
             analysis_result = {{'profit_margin_by_region': None}}
 
+        IMPORTANT SAFETY CHECKS:
+            - ALWAYS check if a function return value is None before using it
+            - ALWAYS include visualization specifications
+            - Especially for safe_groupby_agg function which may return None
+            - Example: result = safe_groupby_agg(...); if result is not None: # then use result
+
         Return your response as a JSON object, with the implementation code as a plain string without any markdown formatting characters.
         """
 
@@ -342,7 +343,7 @@ class StatisticalAgent:
                 {"role": "system", "content": "You are a statistical analysis API that returns robust, executable Python code without markdown formatting."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.4,
+            temperature=0.2,
             response_format={"type": "json_object"}
         )
         

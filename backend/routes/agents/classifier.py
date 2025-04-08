@@ -37,17 +37,9 @@ class RequestClassifier:
 
         Prompt: {user_message}
 
-        For transformation, look for keywords related to:
-        - Filtering (e.g., "filter", "where", "only show", "find", "exclude")
-        - Sorting (e.g., "sort", "order", "arrange", "rank")
-        - Aggregation (e.g., "group", "sum", "average", "count", "total", "by")
-        - Column operations (e.g., "create column", "new column", "calculate", "rename", "drop column")
-
-        For visualization, look for keywords related to charts or graphs like:
-        - "show me a chart/graph", "plot", "visualize", "create a chart", "graph this data"
-        - Specific chart types like "bar chart", "pie chart", "line graph", "scatter plot"
-
-        For statistical analysis, look for keywords related to:
+        For statistical analysis,
+        Users query requires any kind of interpretation of data, statistical tests, or analysis. 
+        Look for keywords related to:
         - "analyze", "statistical", "statistics", "test", "hypothesis", "significance", "p-value"
         - Specific analysis types like "correlation", "regression", "t-test", "chi-square", "ANOVA"
         - Statistical concepts like "distribution", "normality", "variance", "standard deviation"
@@ -55,6 +47,20 @@ class RequestClassifier:
         - Time series analysis, "trend analysis", "seasonality", "forecasting"
         - Comparative analysis, "compare", "contrast", "differences between groups"
         - Exploratory data analysis, "explore", "discover patterns", "identify anomalies"
+
+        For transformation:
+        User asks for ONLY data manipulation or transformation without any visualization or statistical analysis.
+        Look for keywords related to:
+        - Filtering (e.g., "filter", "where", "only show", "find", "exclude")
+        - Sorting (e.g., "sort", "order", "arrange", "rank")
+        - Aggregation (e.g., "group", "sum", "average", "count", "total", "by")
+        - Column operations (e.g., "create column", "new column", "calculate", "rename", "drop column")
+
+        For visualization:
+        User asks for ONLY visualization of data without any transformation or statistical analysis.
+        Look for keywords related to charts or graphs like:
+        - "show me a chart/graph", "plot", "visualize", "create a chart", "graph this data"
+        - Specific chart types like "bar chart", "pie chart", "line graph", "scatter plot"
 
         For query (conversational questions), look for:
         - Simple questions that ask for information about the data.
