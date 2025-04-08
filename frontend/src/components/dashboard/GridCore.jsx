@@ -51,53 +51,88 @@ const GridCore = {
            colIndex >= startCol && colIndex <= endCol;
   },
 
-  // Cell formatting
-  formatCellValue: (value, rowIndex, colIndex, cellFormats) => {
-    if (value === '' || value === null || value === undefined) return '';
-    
-    const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
-    let formattedValue = value;
-    
-    if (!isNaN(parseFloat(value))) {
-      let numValue = parseFloat(value);
-      
-      if (format.isPercentage) {
-        formattedValue = `${(numValue * 100).toFixed(format.decimals || 0)}%`;
-      } else {
-        if (format.useCommas) {
-          formattedValue = numValue.toLocaleString('en-US', {
-            minimumFractionDigits: format.decimals || 0,
-            maximumFractionDigits: format.decimals || 0
+ // Cell formatting
+formatCellValue: (value, rowIndex, colIndex, cellFormats) => {
+  if (value === '' || value === null || value === undefined) return '';
+  
+  const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
+  let formattedValue = value;
+  
+  // Handle date formatting
+  if (format.isDate && typeof value === 'string') {
+    try {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        if (format.dateType === 'short') {
+          formattedValue = date.toLocaleDateString();
+        } else if (format.dateType === 'long') {
+          formattedValue = date.toLocaleDateString(undefined, { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
           });
-        } else {
-          formattedValue = numValue.toFixed(format.decimals || 0);
+        } else if (format.dateType === 'time') {
+          formattedValue = date.toLocaleTimeString();
         }
-        
-        if (format.isCurrency) {
-          formattedValue = `$${formattedValue}`;
-        }
+        return formattedValue;
+      }
+    } catch (e) {
+      console.error('Error formatting date:', e);
+    }
+  }
+  
+  // Handle number formatting
+  if (!isNaN(parseFloat(value))) {
+    let numValue = parseFloat(value);
+    
+    if (format.isPercentage) {
+      formattedValue = `${(numValue * 100).toFixed(format.decimals || 0)}%`;
+    } else {
+      if (format.useCommas) {
+        formattedValue = numValue.toLocaleString('en-US', {
+          minimumFractionDigits: format.decimals || 0,
+          maximumFractionDigits: format.decimals || 0
+        });
+      } else {
+        formattedValue = numValue.toFixed(format.decimals || 0);
+      }
+      
+      if (format.isCurrency) {
+        formattedValue = `$${formattedValue}`;
       }
     }
-    
-    return formattedValue;
-  },
+  }
+  
+  return formattedValue;
+},
 
-  // Cell styling
-  getCellStyle: (rowIndex, colIndex, cellFormats) => {
-    const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
-    return {
-      fontWeight: format.bold ? 'bold' : 'normal',
-      fontStyle: format.italic ? 'italic' : 'normal',
-      textDecoration: [
-        format.underline && 'underline',
-        format.strikethrough && 'line-through'
-      ].filter(Boolean).join(' '),
-      color: format.textColor || 'inherit',
-      backgroundColor: format.fillColor || 'inherit',
-      textAlign: format.align || 'left'
-    };
-  },
-
+// Cell styling
+getCellStyle: (rowIndex, colIndex, cellFormats) => {
+  const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
+  
+  // Generate border styles based on format.borders
+  let borderStyle = {};
+  if (format.borders) {
+    if (format.borders.top) borderStyle.borderTop = '1px solid #000';
+    if (format.borders.right) borderStyle.borderRight = '1px solid #000';
+    if (format.borders.bottom) borderStyle.borderBottom = '1px solid #000';
+    if (format.borders.left) borderStyle.borderLeft = '1px solid #000';
+  }
+  
+  return {
+    fontWeight: format.bold ? 'bold' : 'normal',
+    fontStyle: format.italic ? 'italic' : 'normal',
+    textDecoration: [
+      format.underline && 'underline',
+      format.strikethrough && 'line-through'
+    ].filter(Boolean).join(' '),
+    color: format.textColor || 'inherit',
+    backgroundColor: format.fillColor || 'inherit',
+    textAlign: format.align || 'left',
+    ...borderStyle
+  };
+},
   // Generate column headers beyond Z (AA, AB, etc.)
   generateColumnLabel: (index) => {
     let label = '';

@@ -120,7 +120,71 @@ const Dashboard = forwardRef(({
             return;
         }
         
-        // Chart creation code
+        // Check for statistical analysis with multiple charts
+        if (chartConfig && Array.isArray(chartConfig)) {
+            console.log("Handling multi-chart statistical analysis:", chartConfig.length, "charts");
+            
+            // Create a new sheet specifically for statistical analysis
+            const sheetCount = Object.keys(sheets).length + 1;
+            const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
+            
+            // Create initial empty data for the new sheet (more rows for multiple charts)
+            // Ensure we have enough rows and columns for multiple charts
+            const emptyData = Array(100).fill().map(() => Array(20).fill(''));
+            
+            // Create the new sheet
+            const newSheets = {
+                ...sheets,
+                [newSheetId]: {
+                    id: newSheetId,
+                    name: `Sheet ${sheetCount}`, // Name to indicate it's an analysis sheet
+                    data: emptyData,
+                    activeCell: { row: 0, col: 0 },
+                    cellFormats: {}
+                }
+            };
+            
+            // First update sheets with the new sheet
+            onUpdateSheetData(newSheets);
+            
+            // Switch to the new sheet
+            onSheetChange(newSheetId);
+            
+            // Add a small delay to ensure the sheet switch is complete before creating charts
+            setTimeout(() => {
+                if (dataGridRef.current) {
+                    // Calculate positions for multiple charts in a grid
+                    const chartsPerRow = 2; // Adjust as needed
+                    const chartWidth = 6; // Default chart width
+                    const chartHeight = 15; // Default chart height
+                    const paddingRows = 2; // Rows between charts
+                    const paddingCols = 1; // Columns between charts
+                    
+                    // Create each chart with appropriate positioning
+                    chartConfig.forEach((config, index) => {
+                        // Calculate row and column position for this chart
+                        const row = Math.floor(index / chartsPerRow) * (chartHeight + paddingRows);
+                        const col = (index % chartsPerRow) * (chartWidth + paddingCols);
+                        
+                        // Ensure we have a deep copy of the chart config
+                        const chartConfigCopy = JSON.parse(JSON.stringify(config));
+                        
+                        // Create the chart at the calculated position
+                        dataGridRef.current.createChart(
+                            chartConfigCopy.type || 'bar',
+                            { row, col },
+                            chartConfigCopy
+                        );
+                        
+                        console.log(`Created chart ${index} at position (${row}, ${col})`);
+                    });
+                }
+            }, 500);
+            
+            return;
+        }
+        
+        // Handle single chart case (existing logic)
         if (!chartConfig) return;
         
         console.log("Creating chart:", {
@@ -205,86 +269,133 @@ const Dashboard = forwardRef(({
     };
     
 
-    // Update format handling function to work with sheets
-    const handleFormatChange = (type, value) => {
-        if (!activeSheet?.activeCell) return;
-        
-        const { row, col } = activeSheet.activeCell;
-        const cellKey = `${row}-${col}`;
-        
-        // Get current cell formats for the active sheet
-        const cellFormats = activeSheet.cellFormats || {};
-        const currentFormat = cellFormats[cellKey] || {};
-        
-        let newFormat = { ...currentFormat };
-        let newData = [...activeSheet.data];
-        let cellValue = activeSheet.data[row]?.[col];
+   // Update format handling function to work with sheets
+const handleFormatChange = (type, value) => {
+    if (!activeSheet?.activeCell) return;
+    
+    const { row, col } = activeSheet.activeCell;
+    const cellKey = `${row}-${col}`;
+    
+    // Get current cell formats for the active sheet
+    const cellFormats = activeSheet.cellFormats || {};
+    const currentFormat = cellFormats[cellKey] || {};
+    
+    let newFormat = { ...currentFormat };
+    let newData = [...activeSheet.data];
+    let cellValue = activeSheet.data[row]?.[col];
 
-        switch (type) {
-            case 'toggleCommas':
-                if (!isNaN(parseFloat(cellValue))) {
-                    newFormat.useCommas = !currentFormat.useCommas;
+    switch (type) {
+        case 'toggleCommas':
+            if (!isNaN(parseFloat(cellValue))) {
+                newFormat.useCommas = !currentFormat.useCommas;
+            }
+            break;
+        case 'decreaseDecimals':
+            newFormat.decimals = Math.max((currentFormat.decimals || 2) - 1, 0);
+            break;
+        case 'increaseDecimals':
+            newFormat.decimals = (currentFormat.decimals || 2) + 1;
+            break;
+        case 'currency':
+            newFormat.isCurrency = !currentFormat.isCurrency;
+            break;
+        case 'percentage':
+            if (!isNaN(parseFloat(cellValue))) {
+                newFormat.isPercentage = !currentFormat.isPercentage;
+                if (newFormat.isPercentage && !currentFormat.isPercentage) {
+                    newData[row][col] = parseFloat(cellValue) / 100;
+                } else if (!newFormat.isPercentage && currentFormat.isPercentage) {
+                    newData[row][col] = parseFloat(cellValue) * 100;
                 }
-                break;
-            case 'decreaseDecimals':
-                newFormat.decimals = Math.max((currentFormat.decimals || 2) - 1, 0);
-                break;
-            case 'increaseDecimals':
-                newFormat.decimals = (currentFormat.decimals || 2) + 1;
-                break;
-            case 'currency':
-                newFormat.isCurrency = !currentFormat.isCurrency;
-                break;
-            case 'percentage':
-                if (!isNaN(parseFloat(cellValue))) {
-                    newFormat.isPercentage = !currentFormat.isPercentage;
-                    if (newFormat.isPercentage && !currentFormat.isPercentage) {
-                        newData[row][col] = parseFloat(cellValue) / 100;
-                    } else if (!newFormat.isPercentage && currentFormat.isPercentage) {
-                        newData[row][col] = parseFloat(cellValue) * 100;
-                    }
+            }
+            break;
+        case 'numberFormat':
+            // Handle general format reset
+            if (value === 'general') {
+                // Reset all number formatting
+                delete newFormat.useCommas;
+                delete newFormat.decimals;
+                delete newFormat.isCurrency;
+                delete newFormat.isPercentage;
+            }
+            break;
+        case 'dateFormat':
+            // Apply date formatting
+            newFormat.dateFormat = value;
+            // If the cell doesn't contain a date, try to convert it
+            if (cellValue && !isNaN(Date.parse(cellValue))) {
+                const date = new Date(cellValue);
+                if (value === 'short') {
+                    newFormat.isDate = true;
+                    newFormat.dateType = 'short';
+                } else if (value === 'long') {
+                    newFormat.isDate = true;
+                    newFormat.dateType = 'long';
+                } else if (value === 'time') {
+                    newFormat.isDate = true;
+                    newFormat.dateType = 'time';
                 }
-                break;
-            case 'bold':
-                newFormat.bold = !currentFormat.bold;
-                break;
-            case 'italic':
-                newFormat.italic = !currentFormat.italic;
-                break;
-            case 'underline':
-                newFormat.underline = !currentFormat.underline;
-                break;
-            case 'strikethrough':
-                newFormat.strikethrough = !currentFormat.strikethrough;
-                break;
-            case 'textColor':
-                newFormat.textColor = value;
-                break;
-            case 'fillColor':
-                newFormat.fillColor = value;
-                break;
-            case 'align':
-                newFormat.align = value;
-                break;
-            default:
-                // Keep existing format for unhandled types
-                return;
-        }
+            }
+            break;
+        case 'bold':
+            newFormat.bold = !currentFormat.bold;
+            break;
+        case 'italic':
+            newFormat.italic = !currentFormat.italic;
+            break;
+        case 'underline':
+            newFormat.underline = !currentFormat.underline;
+            break;
+        case 'strikethrough':
+            newFormat.strikethrough = !currentFormat.strikethrough;
+            break;
+        case 'textColor':
+            newFormat.textColor = value;
+            break;
+        case 'fillColor':
+            newFormat.fillColor = value;
+            break;
+        case 'align':
+            newFormat.align = value;
+            break;
+        case 'border':
+            // Handle border styles
+            if (!newFormat.borders) newFormat.borders = {};
+            
+            if (value === 'all') {
+                newFormat.borders = { top: true, right: true, bottom: true, left: true };
+            } else if (value === 'outside') {
+                newFormat.borders = { top: true, right: true, bottom: true, left: true, inside: false };
+            } else if (value === 'none') {
+                newFormat.borders = {};
+            } else {
+                // Set individual borders (top, bottom, left, right)
+                newFormat.borders[value] = !newFormat.borders[value];
+            }
+            break;
+        case 'clear':
+            // Clear all formatting
+            newFormat = {};
+            break;
+        default:
+            // Keep existing format for unhandled types
+            return;
+    }
 
-        // Update the cell formats for this sheet
-        const updatedSheets = { ...sheets };
-        updatedSheets[activeSheetId].cellFormats = {
-            ...cellFormats,
-            [cellKey]: newFormat
-        };
-
-        // If data changed, update it too
-        if (newData !== activeSheet.data) {
-            updatedSheets[activeSheetId].data = newData;
-        }
-
-        onUpdateSheetData(updatedSheets);
+    // Update the cell formats for this sheet
+    const updatedSheets = { ...sheets };
+    updatedSheets[activeSheetId].cellFormats = {
+        ...cellFormats,
+        [cellKey]: newFormat
     };
+
+    // If data changed, update it too
+    if (newData !== activeSheet.data) {
+        updatedSheets[activeSheetId].data = newData;
+    }
+
+    onUpdateSheetData(updatedSheets);
+};
 
     // Get current cell format for the active sheet
     const getCurrentFormat = () => {

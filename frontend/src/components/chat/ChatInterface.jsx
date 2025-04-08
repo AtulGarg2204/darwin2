@@ -510,30 +510,82 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                     'Authorization': `Bearer ${token}`
                 }
             });
-            console.log("RESPNSE DATA", response);
+            console.log("RESPONSE DATA", response);
             const { data: responseData } = response;
-            const { text, chartConfig, sourceSheetId, targetSheetId, transformedData } = responseData;
             
+            // Handle different response types
+            let chartConfigData = null;
+            let sourceSheetId = null;
+            let targetSheetId = null;
+            let transformedData = null;
+            let text = "";
+            
+            if (responseData.operation === "statistics" && Array.isArray(responseData.chartConfig) && onChartRequest) {
+                // Handle statistical analysis with multiple charts
+                console.log("Processing statistical analysis with", responseData.chartConfig.length, "charts");
+                onChartRequest(responseData.chartConfig, responseData.sourceSheetId, explicitTargetSheetId || responseData.targetSheetId);
+            } else if (responseData.operation === "transformation" && responseData.transformedData && onChartRequest) {
+                // Handle data transformation with operation field
+                const emptySheetId = findFirstEmptySheet();
+                
+                const parsedFile = {
+                    name: "Transformed Data",
+                    parsedData: responseData.transformedData,
+                    type: 'application/json'
+                };
+                
+                onChartRequest(null, null, emptySheetId || null, parsedFile);
+            } else if (responseData.chartConfig && onChartRequest) {
+                // Handle single chart case (with or without operation field)
+                const finalTargetSheetId = isChartRequest && !explicitTargetSheetId ? null : responseData.targetSheetId;
+                
+                console.log("Calling onChartRequest with:", {
+                    chartType: responseData.chartConfig.type,
+                    sourceSheetId: responseData.sourceSheetId,
+                    targetSheetId: finalTargetSheetId,
+                    isNewSheet: finalTargetSheetId === null
+                });
+                
+                onChartRequest(responseData.chartConfig, responseData.sourceSheetId, finalTargetSheetId);
+            } else if (responseData.transformedData && onChartRequest) {
+                // Handle legacy transformedData (without operation field)
+                const emptySheetId = findFirstEmptySheet();
+                
+                const parsedFile = {
+                    name: "Transformed Data",
+                    parsedData: responseData.transformedData,
+                    type: 'application/json'
+                };
+                
+                onChartRequest(null, null, emptySheetId || null, parsedFile);
+            }
+            
+            // Update messages with response
             const newMessages = [
                 ...messages,
                 { sender: 'user', text: input },
-                { sender: 'assistant', text, chartConfig }
+                { sender: 'assistant', text, chartConfig: chartConfigData }
             ];
             setMessages(newMessages);
             
-            if (chartConfig && onChartRequest) {
+            // Handle different types of requests
+            if (responseData.operation === "statistics" && Array.isArray(chartConfigData) && onChartRequest) {
+                // Handle statistical analysis with multiple charts
+                console.log("Processing statistical analysis with", chartConfigData.length, "charts");
+                onChartRequest(chartConfigData, sourceSheetId, explicitTargetSheetId || targetSheetId);
+            } else if (chartConfigData && onChartRequest) {
                 // If this is a chart request and no explicit target was specified,
                 // pass null to create a new sheet
                 const finalTargetSheetId = isChartRequest && !explicitTargetSheetId ? null : targetSheetId;
                 
                 console.log("Calling onChartRequest with:", {
-                    chartType: chartConfig.type,
+                    chartType: chartConfigData.type,
                     sourceSheetId,
                     targetSheetId: finalTargetSheetId,
                     isNewSheet: finalTargetSheetId === null
                 });
                 
-                onChartRequest(chartConfig, sourceSheetId, finalTargetSheetId);
+                onChartRequest(chartConfigData, sourceSheetId, finalTargetSheetId);
             } else if (transformedData && onChartRequest) {
                 const emptySheetId = findFirstEmptySheet();
                 

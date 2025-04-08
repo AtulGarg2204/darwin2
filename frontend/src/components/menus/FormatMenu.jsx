@@ -25,6 +25,68 @@ const FormatMenu = ({ onFormatChange }) => {
         { id: 'right', icon: '▕', label: 'Right border' }
     ];
 
+    // Handler for number formatting options
+    const handleNumberFormat = (format) => {
+        if (!onFormatChange) return;
+        
+        switch (format) {
+            case 'general':
+                // Reset to general format
+                onFormatChange('numberFormat', 'general');
+                break;
+            case 'number':
+                // Apply standard number format
+                onFormatChange('toggleCommas');
+                break;
+            case 'currency':
+                // Apply currency format
+                onFormatChange('currency');
+                break;
+            case 'percentage':
+                // Apply percentage format
+                onFormatChange('percentage');
+                break;
+            default:
+                break;
+        }
+    };
+
+    // Handler for date formatting
+    const handleDateFormat = (format) => {
+        if (!onFormatChange) return;
+        onFormatChange('dateFormat', format);
+    };
+
+    // Handler for text formatting
+    const handleTextFormat = (format) => {
+        if (!onFormatChange) return;
+        onFormatChange(format);
+    };
+
+    // Handler for alignment
+    const handleAlignment = (alignment) => {
+        if (!onFormatChange) return;
+        onFormatChange('align', alignment);
+    };
+
+    // Handler for border styles
+    const handleBorder = (borderStyle) => {
+        if (!onFormatChange) return;
+        onFormatChange('border', borderStyle);
+    };
+
+    // Handler for fill color
+    const handleFillColor = (color) => {
+        if (!onFormatChange) return;
+        onFormatChange('fillColor', color);
+    };
+
+    // Handler for clearing all formatting
+    const handleClearFormatting = () => {
+        if (!onFormatChange) return;
+        onFormatChange('clear');
+    };
+
     return (
         <div className="relative group">
             <button className="px-3 py-1 hover:bg-gray-100 rounded">
@@ -39,10 +101,10 @@ const FormatMenu = ({ onFormatChange }) => {
                         <span>Number</span>
                     </button>
                     <div className="absolute hidden group-hover/sub:block left-full top-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px]">
-                        <button onClick={() => onFormatChange('number', 'general')} className="w-full px-4 py-2 text-left hover:bg-gray-100">General</button>
-                        <button onClick={() => onFormatChange('number', 'number')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Number</button>
-                        <button onClick={() => onFormatChange('number', 'currency')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Currency</button>
-                        <button onClick={() => onFormatChange('number', 'percentage')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Percentage</button>
+                        <button onClick={() => handleNumberFormat('general')} className="w-full px-4 py-2 text-left hover:bg-gray-100">General</button>
+                        <button onClick={() => handleNumberFormat('number')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Number</button>
+                        <button onClick={() => handleNumberFormat('currency')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Currency</button>
+                        <button onClick={() => handleNumberFormat('percentage')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Percentage</button>
                     </div>
                 </div>
 
@@ -53,9 +115,9 @@ const FormatMenu = ({ onFormatChange }) => {
                         <span>Date and time</span>
                     </button>
                     <div className="absolute hidden group-hover/sub:block left-full top-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px]">
-                        <button onClick={() => onFormatChange('date', 'short')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Short Date</button>
-                        <button onClick={() => onFormatChange('date', 'long')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Long Date</button>
-                        <button onClick={() => onFormatChange('date', 'time')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Time</button>
+                        <button onClick={() => handleDateFormat('short')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Short Date</button>
+                        <button onClick={() => handleDateFormat('long')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Long Date</button>
+                        <button onClick={() => handleDateFormat('time')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Time</button>
                     </div>
                 </div>
 
@@ -66,15 +128,15 @@ const FormatMenu = ({ onFormatChange }) => {
                         <span>Text</span>
                     </button>
                     <div className="absolute hidden group-hover/sub:block left-full top-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px]">
-                        <button onClick={() => onFormatChange('bold')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+                        <button onClick={() => handleTextFormat('bold')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
                             <Bold className="w-4 h-4" />
                             <span>Bold</span>
                         </button>
-                        <button onClick={() => onFormatChange('italic')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+                        <button onClick={() => handleTextFormat('italic')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
                             <Italic className="w-4 h-4" />
                             <span>Italic</span>
                         </button>
-                        <button onClick={() => onFormatChange('underline')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+                        <button onClick={() => handleTextFormat('underline')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
                             <Underline className="w-4 h-4" />
                             <span>Underline</span>
                         </button>
@@ -88,15 +150,15 @@ const FormatMenu = ({ onFormatChange }) => {
                         <span>Alignment</span>
                     </button>
                     <div className="absolute hidden group-hover/sub:block left-full top-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px]">
-                        <button onClick={() => onFormatChange('align', 'left')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+                        <button onClick={() => handleAlignment('left')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
                             <AlignLeft className="w-4 h-4" />
                             <span>Left</span>
                         </button>
-                        <button onClick={() => onFormatChange('align', 'center')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+                        <button onClick={() => handleAlignment('center')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
                             <AlignCenter className="w-4 h-4" />
                             <span>Center</span>
                         </button>
-                        <button onClick={() => onFormatChange('align', 'right')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+                        <button onClick={() => handleAlignment('right')} className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
                             <AlignRight className="w-4 h-4" />
                             <span>Right</span>
                         </button>
@@ -113,7 +175,7 @@ const FormatMenu = ({ onFormatChange }) => {
                         {borderStyles.map(style => (
                             <button 
                                 key={style.id}
-                                onClick={() => onFormatChange('border', style.id)}
+                                onClick={() => handleBorder(style.id)}
                                 className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2"
                             >
                                 <span className="font-mono">{style.icon}</span>
@@ -136,7 +198,7 @@ const FormatMenu = ({ onFormatChange }) => {
                                 .map(color => (
                                     <button
                                         key={color}
-                                        onClick={() => onFormatChange('fillColor', color)}
+                                        onClick={() => handleFillColor(color)}
                                         className="w-6 h-6 rounded border border-gray-200"
                                         style={{ backgroundColor: color }}
                                         title={color}
@@ -148,7 +210,7 @@ const FormatMenu = ({ onFormatChange }) => {
 
                 {/* Clear formatting */}
                 <button 
-                    onClick={() => onFormatChange('clear')}
+                    onClick={handleClearFormatting}
                     className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2 border-t border-gray-200"
                 >
                     <Trash2 className="w-4 h-4" />
@@ -159,4 +221,4 @@ const FormatMenu = ({ onFormatChange }) => {
     );
 };
 
-export default FormatMenu; 
+export default FormatMenu;

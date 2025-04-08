@@ -10,16 +10,6 @@ import {
 } from 'recharts';
 
 const ChartMessage = ({ data, chartConfig }) => {
-   
-    if (!data || !chartConfig) {
-        console.error('Missing required props:', { 
-            hasData: !!data, 
-            hasConfig: !!chartConfig 
-        });
-        return <div>Missing required data for chart visualization</div>;
-    }
-    
-    // Transform data to the format Recharts expects
     const transformData = () => {
         
         
@@ -152,6 +142,417 @@ const ChartMessage = ({ data, chartConfig }) => {
         
         return ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
     };
+    if (!data || !chartConfig) {
+        console.error('Missing required props:', { 
+            hasData: !!data, 
+            hasConfig: !!chartConfig 
+        });
+        return <div>Missing required data for chart visualization</div>;
+    }
+    const renderSingleChart = () => {
+        const chartData = transformData(chartConfig, data);
+    
+        if (chartData.length === 0) {
+            return <div>No data available for chart visualization</div>;
+        }
+        
+        // Get data keys and colors (existing logic)
+        const dataKeys = getDataKeys(chartConfig, chartData);
+        const chartColors = getColors(chartConfig);
+        
+        // Render chart based on type (existing render logic)
+        const chartType = chartConfig.type ? chartConfig.type.toLowerCase() : 'bar';
+                        
+                        switch (chartType) {
+                            case 'bar':
+                                return (
+                                    <BarChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index) => (
+                                            <Bar 
+                                                key={key} 
+                                                dataKey={key} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                                name={key}
+                                            />
+                                        ))}
+                                    </BarChart>
+                                );
+                                
+                            case 'column':
+                                return (
+                                    <BarChart 
+                                        data={chartData}
+                                        layout="vertical"
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis type="number" />
+                                        <YAxis 
+                                            dataKey="name" 
+                                            type="category" 
+                                            width={80}
+                                        />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index) => (
+                                            <Bar 
+                                                key={key} 
+                                                dataKey={key} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                                name={key}
+                                            />
+                                        ))}
+                                    </BarChart>
+                                );
+                
+                            case 'line':
+                                return (
+                                    <LineChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index) => (
+                                            <Line 
+                                                key={key} 
+                                                type="monotone" 
+                                                dataKey={key} 
+                                                stroke={chartColors[index % chartColors.length]} 
+                                                name={key}
+                                                dot={{ stroke: chartColors[index % chartColors.length], strokeWidth: 2, fill: 'white' }}
+                                                connectNulls={true}
+                                            />
+                                        ))}
+                                    </LineChart>
+                                );
+                                
+                            case 'area':
+                                return (
+                                    <AreaChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index) => (
+                                            <Area 
+                                                key={key} 
+                                                type="monotone" 
+                                                dataKey={key} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                                stroke={chartColors[index % chartColors.length]} 
+                                                fillOpacity={0.6}
+                                                name={key}
+                                            />
+                                        ))}
+                                    </AreaChart>
+                                );
+                                
+                            case 'pie':
+                                // For pie charts with multiple data keys, restructure if needed
+                                if (dataKeys.length > 1 && chartConfig.singleSeries !== true) {
+                                    // Create a flattened structure for multiple series
+                                    const pieData = dataKeys.flatMap((key, keyIndex) => 
+                                        chartData.map((item, itemIndex) => ({
+                                            name: `${item.name} (${key})`,
+                                            value: Number(item[key]) || 0,
+                                            fill: chartColors[keyIndex % chartColors.length]
+                                        }))
+                                    );
+                                    
+                                    return (
+                                        <PieChart>
+                                            <Pie
+                                                data={pieData}
+                                                dataKey="value"
+                                                nameKey="name"
+                                                cx="50%"
+                                                cy="50%"
+                                                outerRadius={80}
+                                                fill="#8884d8"
+                                                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                            >
+                                                {pieData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.fill || chartColors[index % chartColors.length]} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip />
+                                            <Legend />
+                                        </PieChart>
+                                    );
+                                }
+                                
+                                // For single data key pie charts
+                                return (
+                                    <PieChart>
+                                        <Pie
+                                            data={chartData}
+                                            dataKey={dataKeys[0]}
+                                            nameKey="name"
+                                            cx="50%"
+                                            cy="50%"
+                                            outerRadius={80}
+                                            fill="#8884d8"
+                                            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                        >
+                                            {chartData.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
+                                            ))}
+                                        </Pie>
+                                        <Tooltip />
+                                        <Legend />
+                                    </PieChart>
+                                );
+                                
+                            case 'radar':
+                                return (
+                                    <RadarChart cx="50%" cy="50%" outerRadius={80} data={chartData}>
+                                        <PolarGrid />
+                                        <PolarAngleAxis dataKey="name" />
+                                        <PolarRadiusAxis />
+                                        {dataKeys.map((key, index) => (
+                                            <Radar
+                                                key={key}
+                                                name={key}
+                                                dataKey={key}
+                                                stroke={chartColors[index % chartColors.length]}
+                                                fill={chartColors[index % chartColors.length]}
+                                                fillOpacity={0.6}
+                                            />
+                                        ))}
+                                        <Legend />
+                                        <Tooltip />
+                                    </RadarChart>
+                                );
+                                
+                            case 'scatter':
+                                return (
+                                    <ScatterChart>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" type="category" name="Category" />
+                                        <YAxis dataKey={dataKeys[0]} type="number" name={dataKeys[0]} />
+                                        <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                                        <Legend />
+                                        <Scatter
+                                            name={dataKeys[0]}
+                                            data={chartData}
+                                            fill={chartColors[0]}
+                                        />
+                                        {dataKeys.length > 1 && (
+                                            <YAxis
+                                                yAxisId="right"
+                                                dataKey={dataKeys[1]}
+                                                orientation="right"
+                                                type="number"
+                                                name={dataKeys[1]}
+                                            />
+                                        )}
+                                        {dataKeys.length > 1 && (
+                                            <Scatter
+                                                name={dataKeys[1]}
+                                                data={chartData}
+                                                fill={chartColors[1]}
+                                                yAxisId="right"
+                                            />
+                                        )}
+                                    </ScatterChart>
+                                );
+                                
+                            case 'funnel':
+                                // For funnel charts, use a simple Bar chart with styling
+                                return (
+                                    <BarChart 
+                                        data={chartData}
+                                        layout="vertical"
+                                        barCategoryGap={1}
+                                        maxBarSize={40}
+                                    >
+                                        <XAxis type="number" hide />
+                                        <YAxis 
+                                            dataKey="name" 
+                                            type="category" 
+                                            width={100}
+                                            axisLine={false}
+                                            tickLine={false}
+                                        />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index) => (
+                                            <Bar 
+                                                key={key} 
+                                                dataKey={key} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                                name={key}
+                                                shape={(props) => {
+                                                    // Create trapezoid shape for funnel effect
+                                                    const { x, y, width, height } = props;
+                                                    return (
+                                                        <path
+                                                            d={`M${x},${y} L${x + width * 0.95},${y} L${x + width},${y + height} L${x},${y + height} Z`}
+                                                            fill={props.fill}
+                                                        />
+                                                    );
+                                                }}
+                                            />
+                                        ))}
+                                    </BarChart>
+                                );
+                                
+                            case 'radialbar':
+                                return (
+                                    <RadialBarChart 
+                                        cx="50%" 
+                                        cy="50%" 
+                                        innerRadius="20%" 
+                                        outerRadius="80%" 
+                                        data={chartData}
+                                        startAngle={180} 
+                                        endAngle={0}
+                                    >
+                                        <RadialBar
+                                            label={{ position: 'insideStart', fill: '#fff' }}
+                                            background
+                                            dataKey={dataKeys[0]}
+                                        >
+                                            {chartData.map((entry, index) => (
+                                                <Cell 
+                                                    key={`cell-${index}`} 
+                                                    fill={chartColors[index % chartColors.length]} 
+                                                />
+                                            ))}
+                                        </RadialBar>
+                                        <Legend 
+                                            iconSize={10} 
+                                            layout="vertical" 
+                                            verticalAlign="middle" 
+                                            align="right"
+                                        />
+                                        <Tooltip />
+                                    </RadialBarChart>
+                                );
+                                
+                            case 'composed':
+                                return (
+                                    <ComposedChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index, array) => {
+                                            // Use different component types based on index or config
+                                            const componentType = chartConfig.seriesTypes?.[key] || 
+                                                                (index === 0 ? 'bar' : 
+                                                                 index === 1 ? 'line' : 'area');
+                                                                
+                                            switch (componentType.toLowerCase()) {
+                                                case 'bar':
+                                                    return (
+                                                        <Bar 
+                                                            key={key} 
+                                                            dataKey={key} 
+                                                            fill={chartColors[index % chartColors.length]} 
+                                                            name={key}
+                                                        />
+                                                    );
+                                                case 'line':
+                                                    return (
+                                                        <Line 
+                                                            key={key}
+                                                            type="monotone"
+                                                            dataKey={key}
+                                                            stroke={chartColors[index % chartColors.length]}
+                                                            name={key}
+                                                        />
+                                                    );
+                                                case 'area':
+                                                    return (
+                                                        <Area
+                                                            key={key}
+                                                            type="monotone"
+                                                            dataKey={key}
+                                                            fill={chartColors[index % chartColors.length]}
+                                                            stroke={chartColors[index % chartColors.length]}
+                                                            fillOpacity={0.6}
+                                                            name={key}
+                                                        />
+                                                    );
+                                                default:
+                                                    return null;
+                                            }
+                                        })}
+                                    </ComposedChart>
+                                );
+                                
+                            case 'treemap':
+                                return (
+                                    <Treemap
+                                        data={chartData.map(item => ({
+                                            name: item.name,
+                                            size: item[dataKeys[0]],
+                                            value: item[dataKeys[0]]
+                                        }))}
+                                        dataKey="size"
+                                        aspectRatio={4/3}
+                                        stroke="#fff"
+                                        fill={chartColors[0]}
+                                    >
+                                        {chartData.map((entry, index) => (
+                                            <Cell 
+                                                key={`cell-${index}`} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                            />
+                                        ))}
+                                        <Tooltip formatter={(value) => [`${value}`, dataKeys[0]]} />
+                                    </Treemap>
+                                );
+                                
+                            default:
+                                console.log(`Unsupported chart type: ${chartType}, falling back to bar chart`);
+                                return (
+                                    <BarChart data={chartData}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="name" />
+                                        <YAxis />
+                                        <Tooltip />
+                                        <Legend />
+                                        {dataKeys.map((key, index) => (
+                                            <Bar 
+                                                key={key} 
+                                                dataKey={key} 
+                                                fill={chartColors[index % chartColors.length]} 
+                                                name={key}
+                                            />
+                                        ))}
+                                    </BarChart>
+                                );
+                        }
+    };
+    if (Array.isArray(chartConfig)) {
+        return (
+            <div className="mt-4 bg-white rounded-lg p-4 shadow-lg">
+                <h3 className="text-sm font-semibold mb-2">Statistical Analysis</h3>
+                
+                {chartConfig.map((config, index) => (
+                    <div key={index} className="mt-4 border-t pt-4 first:border-0 first:pt-0">
+                        <h4 className="text-sm font-medium mb-2">{config.title || `Chart ${index + 1}`}</h4>
+                        <div style={{ width: '100%', height: '300px', minHeight: '250px' }}>
+                            <ResponsiveContainer width="100%" height="100%">
+                                {renderSingleChart(config, data)}
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+    // Transform data to the format Recharts expects
+   
     
     const chartColors = getColors();
     
@@ -160,7 +561,8 @@ const ChartMessage = ({ data, chartConfig }) => {
                       (chartConfig.options && chartConfig.options.title ? 
                        chartConfig.options.title.text : 
                        `${chartConfig.type || 'Bar'} Chart`);
-
+    
+    
     const renderChart = () => {
         const chartType = chartConfig.type ? chartConfig.type.toLowerCase() : 'bar';
         
