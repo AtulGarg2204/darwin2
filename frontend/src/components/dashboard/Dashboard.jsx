@@ -324,7 +324,7 @@ const handleFormatChange = (type, value) => {
             newFormat.dateFormat = value;
             // If the cell doesn't contain a date, try to convert it
             if (cellValue && !isNaN(Date.parse(cellValue))) {
-                const date = new Date(cellValue);
+                
                 if (value === 'short') {
                     newFormat.isDate = true;
                     newFormat.dateType = 'short';
