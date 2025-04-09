@@ -299,14 +299,7 @@ class StatisticalAgent:
               safe_groupby_agg(df, ['groupby_column'], {{'value_column': 'mean'}})
            - DO NOT include markdown formatting (```python) in your code
         
-        4. visualizations(ALWAYS INCLUDE ATLEAST ONE CONFIG): Array of visualization specifications, each with:
-           - type: Chart type (bar, line, scatter, pie, heatmap)
-           - title: Chart title
-           - x_axis: Column for x-axis
-           - y_axis: Column(s) for y-axis (can be an array for multiple series)
-           - description: What this visualization shows
-        
-        5. interpretation_guide: Guidelines on how to interpret the results
+        4. interpretation_guide: Guidelines on how to interpret the results
 
         Here's an example implementation for calculating profit margin by region:
         
@@ -455,65 +448,23 @@ class StatisticalAgent:
             if "analysis_result" in execution_env:
                 result = execution_env["analysis_result"]
                 
-                # If result is empty or None, provide a basic result
-                if result is None or (isinstance(result, dict) and not result):
-                    # Generate basic analysis as fallback
-                    result = {"basic_analysis": self._generate_basic_result(working_df)}
-                
                 # Convert to JSON-serializable format
                 return self._make_serializable(result)
             else:
-                # Generate basic analysis as fallback
-                basic_result = {"basic_analysis": self._generate_basic_result(working_df)}
-                return self._make_serializable(basic_result)
+                raise ValueError("No analysis_result found in execution environment")
             
         except Exception as e:
             error_message = str(e)
             traceback_str = traceback.format_exc()
             print(f"Error executing analysis: {error_message}")
             print(traceback_str)
-            
-            # Return error information along with basic analysis
-            basic_result = self._generate_basic_result(df)
-            return {
-                "error": error_message,
-                "traceback": traceback_str,
-                "basic_analysis": basic_result
-            }
-    
-    def _generate_basic_result(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Generate basic analysis result when main analysis fails."""
-        result = {}
-        
-        try:
-            # Get numeric columns
-            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-            
-            # Basic statistics for numeric columns
-            if numeric_cols:
-                result["numeric_stats"] = df[numeric_cols].describe().to_dict()
-            
-            # If we have categorical and numeric columns, do a basic group by
-            categorical_cols = [col for col in df.columns 
-                               if not pd.api.types.is_numeric_dtype(df[col]) 
-                               and not pd.api.types.is_datetime64_any_dtype(df[col])]
-            
-            if categorical_cols and numeric_cols:
-                # Take first categorical column and first numeric column
-                cat_col = categorical_cols[0]
-                num_col = numeric_cols[0]
-                
-                # Group by categorical and get mean of numeric
-                try:
-                    grouped = df.groupby(cat_col)[num_col].mean().reset_index()
-                    result[f"{num_col}_by_{cat_col}"] = grouped.to_dict('records')
-                except:
-                    pass
-            
-            return result
-        except Exception as e:
-            print(f"Error in _generate_basic_result: {str(e)}")
-            return {"error": str(e)}
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": error_message,
+                    "traceback": traceback_str
+                }
+            )
     
     def _make_serializable(self, obj: Any) -> Any:
         """Convert Python objects to JSON-serializable format."""
@@ -538,131 +489,127 @@ class StatisticalAgent:
             except:
                 return str(obj)
     
-    def _generate_chart_configs(self, analysis_result: Dict[str, Any], visualization_specs: List[Dict[str, Any]], 
-                              df: pd.DataFrame, source_sheet_id: str, target_sheet_id: str) -> List[Dict[str, Any]]:
-        """Generate chart configurations from visualization specs."""
+    async def _generate_visualizations(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
+                                    source_sheet_id: str, target_sheet_id: str) -> List[Dict[str, Any]]:
+        """Generate visualizations based on analysis results."""
+        # Create visualization prompt
+        prompt = f"""
+        You are a data visualization expert. Based on the following analysis results, create appropriate visualizations.
+
+        ANALYSIS RESULTS:
+        ```json
+        {json.dumps(analysis_result, default=str, indent=2)}
+        ```
+
+        DATAFRAME INFO:
+        - Columns: {df.columns.tolist()}
+        - Sample data: {df.head().to_dict()}
+
+        Create a JSON array of visualization configurations. Each configuration should have:
+        {{
+            "type": "chart type (bar, line, scatter, pie, heatmap)",
+            "title": "Chart title",
+            "xAxisColumn": "Column for x-axis",
+            "yAxisColumns": ["Columns for y-axis"],
+            "dataTransformationCode": "Python code to transform data for visualization",
+            "visualization": {{
+                "colors": ["#hex1", "#hex2"],
+                "stacked": true/false
+            }}
+        }}
+
+        The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
+        Include any necessary aggregations, sorting, filtering, or calculations.
+        """
+
+        # Get visualization recommendations from OpenAI
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a data visualization API. Return only valid JSON with no comments, no markdown, and no explanation."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+
+        print("VISUALIZATION CONFIGS:")
+        print(response.choices[0].message.content)
+
+        # Parse the visualization configurations
+        viz_configs_response = json.loads(response.choices[0].message.content)
+        viz_configs = viz_configs_response.get("visualizations", [])
+        if not isinstance(viz_configs, list):
+            viz_configs = [viz_configs]
+
         chart_configs = []
-        
-        for viz_spec in visualization_specs:
-            viz_type = viz_spec.get("type", "bar")
-            x_axis = viz_spec.get("x_axis")
-            y_axis = viz_spec.get("y_axis", [])
-            title = viz_spec.get("title", "Data Visualization")
-            
-            # Normalize y_axis to always be a list
-            if not isinstance(y_axis, list):
-                y_axis = [y_axis]
-            
-            # Create base chart config
-            chart_config = {
-                "type": viz_type,
-                "title": title,
-                "subtitle": viz_spec.get("description", ""),
-                "sourceSheetId": source_sheet_id,
-                "targetSheetId": target_sheet_id,
-                "colors": ["#4e79a7", "#f28e2b", "#59a14f", "#76b7b2", "#edc949"],
-                "stacked": viz_spec.get("stacked", False)
-            }
-            
-            # Generate chart data based on chart type
-            chart_data = []
-            
+        for viz_config in viz_configs:
             try:
-                if viz_type in ["bar", "line", "area"]:
-                    # Check if custom data is provided in the analysis result
-                    result_key = viz_spec.get("data_key")
-                    if result_key and result_key in analysis_result:
-                        # Use pre-calculated data from analysis result
-                        chart_data = analysis_result[result_key]
-                    elif x_axis and y_axis and x_axis in df.columns:
-                        # Generate data from the DataFrame
-                        categories = df[x_axis].dropna().unique()
-                        
-                        for category in categories[:20]:  # Limit to first 20 categories
-                            filtered_df = df[df[x_axis] == category]
-                            if not filtered_df.empty:
-                                data_point = {"name": str(category)}
-                                
-                                for y_col in y_axis:
-                                    if y_col in filtered_df.columns:
-                                        if pd.api.types.is_numeric_dtype(filtered_df[y_col]):
-                                            data_point[y_col] = float(filtered_df[y_col].mean())
-                                
-                                # Only add non-empty data points
-                                if len(data_point) > 1:
-                                    chart_data.append(data_point)
-                
-                elif viz_type == "scatter":
-                    # Check if custom data is provided
-                    result_key = viz_spec.get("data_key")
-                    if result_key and result_key in analysis_result:
-                        chart_data = analysis_result[result_key]
-                    elif x_axis and y_axis and len(y_axis) > 0:
-                        if x_axis in df.columns and y_axis[0] in df.columns:
-                            for idx, row in df.iterrows():
-                                if pd.notna(row[x_axis]) and pd.notna(row[y_axis[0]]):
-                                    try:
-                                        data_point = {
-                                            "x": float(row[x_axis]),
-                                            "y": float(row[y_axis[0]]),
-                                            "name": str(idx)
-                                        }
-                                        chart_data.append(data_point)
-                                    except:
-                                        pass
-                
-                elif viz_type == "pie":
-                    # Check if custom data is provided
-                    result_key = viz_spec.get("data_key")
-                    if result_key and result_key in analysis_result:
-                        chart_data = analysis_result[result_key]
-                    elif x_axis and y_axis and len(y_axis) > 0:
-                        if x_axis in df.columns and y_axis[0] in df.columns:
-                            grouped = df.groupby(x_axis)[y_axis[0]].sum().reset_index()
-                            
-                            for _, row in grouped.iterrows():
-                                if pd.notna(row[y_axis[0]]):
-                                    chart_data.append({
-                                        "name": str(row[x_axis]),
-                                        "value": float(row[y_axis[0]])
-                                    })
-                
-                elif viz_type == "heatmap":
-                    # Check if custom data is provided
-                    result_key = viz_spec.get("data_key")
-                    if result_key and result_key in analysis_result:
-                        chart_data = analysis_result[result_key]
-                    elif "correlation_data" in analysis_result:
-                        # Use pre-calculated correlation data
-                        chart_data = analysis_result["correlation_data"]
-                    elif x_axis and y_axis and len(y_axis) > 1:
-                        # Try to create a cross-tabulation
-                        pivot = pd.pivot_table(
-                            df, 
-                            values=y_axis[0], 
-                            index=x_axis, 
-                            columns=y_axis[1],
-                            aggfunc='mean'
-                        ).fillna(0)
-                        
-                        # Convert to format needed for heatmap
-                        for idx_val in pivot.index:
-                            for col_val in pivot.columns:
-                                chart_data.append({
-                                    "x": str(idx_val),
-                                    "y": str(col_val),
-                                    "value": float(pivot.loc[idx_val, col_val])
-                                })
-            
+                # Execute the data transformation code
+                local_scope = {"df": df, "pd": pd, "np": np}
+                exec(viz_config["dataTransformationCode"], local_scope)
+                result_df = local_scope.get("result_df")
+
+                if result_df is None:
+                    continue
+
+                # Convert DataFrame to chart data format
+                chart_data = []
+                if viz_config["type"] in ["bar", "line", "area"]:
+                    for _, row in result_df.iterrows():
+                        data_point = {"name": str(row[viz_config["xAxisColumn"]])}
+                        for y_col in viz_config["yAxisColumns"]:
+                            if y_col in result_df.columns:
+                                data_point[y_col] = float(row[y_col])
+                        chart_data.append(data_point)
+                elif viz_config["type"] == "scatter":
+                    for _, row in result_df.iterrows():
+                        chart_data.append({
+                            "x": float(row[viz_config["xAxisColumn"]]),
+                            "y": float(row[viz_config["yAxisColumns"][0]]),
+                            "name": str(row[viz_config["xAxisColumn"]])
+                        })
+                elif viz_config["type"] == "pie":
+                    for _, row in result_df.iterrows():
+                        chart_data.append({
+                            "name": str(row[viz_config["xAxisColumn"]]),
+                            "value": float(row[viz_config["yAxisColumns"][0]])
+                        })
+                elif viz_config["type"] == "heatmap":
+                    # Create a pivot table for heatmap
+                    pivot = pd.pivot_table(
+                        result_df,
+                        values=viz_config["yAxisColumns"][0],
+                        index=viz_config["xAxisColumn"],
+                        columns=viz_config["yAxisColumns"][1],
+                        aggfunc='mean'
+                    ).fillna(0)
+
+                    for idx_val in pivot.index:
+                        for col_val in pivot.columns:
+                            chart_data.append({
+                                "x": str(idx_val),
+                                "y": str(col_val),
+                                "value": float(pivot.loc[idx_val, col_val])
+                            })
+
+                if chart_data:
+                    chart_config = {
+                        "type": viz_config["type"],
+                        "title": viz_config["title"],
+                        "data": chart_data,
+                        "colors": viz_config["visualization"].get("colors", ["#4e79a7", "#f28e2b", "#59a14f"]),
+                        "stacked": viz_config["visualization"].get("stacked", False),
+                        "sourceSheetId": source_sheet_id,
+                        "targetSheetId": target_sheet_id
+                    }
+                    chart_configs.append(chart_config)
+
             except Exception as e:
-                print(f"Error generating chart data for {title}: {str(e)}")
+                print(f"Error generating chart for {viz_config.get('title', 'unknown')}: {str(e)}")
                 continue
-            
-            # Only add charts with data
-            if chart_data:
-                chart_config["data"] = chart_data
-                chart_configs.append(chart_config)
-        
+
         return chart_configs
     
     async def _generate_interpretation(self, user_message: str, analysis_type: str, 
@@ -711,120 +658,6 @@ class StatisticalAgent:
         
         return response.choices[0].message.content
     
-    async def _generate_basic_analysis(self, df: pd.DataFrame, user_message: str, 
-                                    source_sheet_id: str, target_sheet_id: str) -> Dict[str, Any]:
-        """Generate a basic analysis when detailed analysis is not possible."""
-        # Create a basic profile of the DataFrame
-        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
-        categorical_cols = [col for col in df.columns if col not in numeric_cols]
-        
-        # Basic stats for numeric columns
-        numeric_stats = {}
-        for col in numeric_cols[:5]:  # Limit to first 5 columns
-            try:
-                numeric_stats[col] = {
-                    "mean": float(df[col].mean()) if not pd.isna(df[col].mean()) else None,
-                    "min": float(df[col].min()) if not pd.isna(df[col].min()) else None,
-                    "max": float(df[col].max()) if not pd.isna(df[col].max()) else None
-                }
-            except:
-                pass
-        
-        # Value counts for categorical columns
-        categorical_stats = {}
-        for col in categorical_cols[:3]:  # Limit to first 3 columns
-            try:
-                top_values = df[col].value_counts().head(3).to_dict()
-                categorical_stats[col] = {str(k): int(v) for k, v in top_values.items()}
-            except:
-                pass
-        
-        # Create prompt for basic analysis
-        prompt = f"""
-        The user asked: "{user_message}"
-        
-        I need to provide a helpful response based on some basic data analysis. 
-        
-        DATA SUMMARY:
-        - {len(df)} rows of data
-        - Numeric columns: {numeric_cols}
-        - Categorical columns: {categorical_cols}
-        
-        BASIC STATS:
-        {json.dumps(numeric_stats, indent=2)}
-        
-        CATEGORICAL DISTRIBUTIONS:
-        {json.dumps(categorical_stats, indent=2)}
-        
-        Please provide a friendly, helpful response that:
-        1. Focuses on sharing basic insights from the data
-        2. Acknowledges we're providing a general overview
-        3. Makes relevant observations about patterns, ranges, or distributions
-        4. DOES NOT mention any errors or technical issues
-        5. Suggests what might be interesting to further explore in the data
-        
-        Keep your response conversational and helpful.
-        """
-        
-        # Get basic analysis from OpenAI
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a helpful data analysis assistant that provides useful insights from basic data."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.4,
-            max_tokens=800
-        )
-        
-        # Generate a simple chart if possible
-        chart_configs = []
-        if numeric_cols and categorical_cols:
-            # Create a simple bar chart of a numeric column by a categorical column
-            y_col = numeric_cols[0]
-            x_col = categorical_cols[0]
-            
-            try:
-                # Get top categories
-                top_categories = df[x_col].value_counts().head(10).index.tolist()
-                
-                # Prepare chart data
-                chart_data = []
-                for category in top_categories:
-                    filtered_df = df[df[x_col] == category]
-                    if not filtered_df.empty:
-                        chart_data.append({
-                            "name": str(category),
-                            y_col: float(filtered_df[y_col].mean())
-                        })
-                
-                if chart_data:
-                    chart_configs.append({
-                        "type": "bar",
-                        "title": f"Average {y_col} by {x_col}",
-                        "subtitle": "Data Overview",
-                        "sourceSheetId": source_sheet_id,
-                        "targetSheetId": target_sheet_id,
-                        "colors": ["#4e79a7", "#f28e2b", "#59a14f"],
-                        "data": chart_data
-                    })
-            except Exception as e:
-                print(f"Error creating basic chart: {str(e)}")
-        
-        # Return the basic analysis
-        return {
-            "text": response.choices[0].message.content,
-            "analysisType": "Statistical Overview",
-            "chartConfigs": chart_configs,
-            "sourceSheetId": source_sheet_id,
-            "operation": "statistical",
-            "metadata": {
-                "rows_analyzed": len(df),
-                "columns_analyzed": len(df.columns),
-                "basic_analysis": True
-            }
-        }
-    
     async def analyze(self, request: Any, current_user: Dict = None) -> Dict[str, Any]:
         """
         Main entry point for statistical analysis requests.
@@ -841,12 +674,10 @@ class StatisticalAgent:
             
             # Handle empty DataFrame
             if df.empty:
-                return {
-                    "text": "I couldn't perform statistical analysis because the data appears to be empty or invalid.",
-                    "analysisType": "Statistical Analysis",
-                    "sourceSheetId": primary_sheet_id,
-                    "operation": "statistical"
-                }
+                raise HTTPException(
+                    status_code=400,
+                    detail="Empty dataset provided for analysis"
+                )
             
             # Generate comprehensive data profile
             data_profile = self._generate_data_profile(df)
@@ -854,32 +685,16 @@ class StatisticalAgent:
             # Create and execute statistical analysis
             analysis_package = await self._create_statistical_analysis(request.message, df, data_profile)
             
-            # Check for analysis type
-            if analysis_package.get("analysis_type") == "none":
-                print("Empty dataset, no analysis performed. Defaulting to basic analysis.")
-                # Fall back to basic analysis
-                return await self._generate_basic_analysis(df, request.message, primary_sheet_id, target_sheet_id)
-            
             # Execute the analysis code
             print("CODE GENERATED:")
             print(analysis_package["implementation"])
             analysis_result = self._execute_analysis(analysis_package["implementation"], df)
-            
-            # Check if analysis was successful
-            if "error" in analysis_result and not any(k for k in analysis_result.keys() if k != "error" and k != "traceback"):
-                # Analysis failed retry
-                analysis_package = await self._create_statistical_analysis(request.message, df, data_profile)
-                analysis_result = self._execute_analysis(analysis_package["implementation"], df)
 
+            print("ANALYSIS RESULT:")
+            print(json.dumps(analysis_result, indent=2))
             
-            # Generate chart configurations
-            chart_configs = self._generate_chart_configs(
-                analysis_result,
-                analysis_package.get("visualizations", []),
-                df,
-                primary_sheet_id,
-                target_sheet_id
-            )
+            # Generate visualizations
+            chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id)
             
             # Generate interpretation
             interpretation = await self._generate_interpretation(
@@ -890,7 +705,6 @@ class StatisticalAgent:
             )
             
             # Return the final response
-            print(f"Chart configs: {len(chart_configs)}")
             return {
                 "text": interpretation,
                 "analysisType": analysis_package.get("analysis_type", "Statistical Analysis"),
@@ -909,26 +723,10 @@ class StatisticalAgent:
         except Exception as e:
             print(f"Error processing statistical analysis request: {str(e)}")
             traceback.print_exc()
-            
-            # Get a basic analysis as fallback
-            try:
-                return await self._generate_basic_analysis(
-                    df if 'df' in locals() and not df.empty else pd.DataFrame(),
-                    request.message,
-                    primary_sheet_id,
-                    request.explicitTargetSheetId or request.activeSheetId
-                )
-            except Exception as fallback_error:
-                print(f"Error generating fallback response: {str(fallback_error)}")
-                
-                # Last resort fallback
-                return {
-                    "text": "I've looked at your data but encountered some challenges with the analysis. Could you provide more specific details about what statistical information you'd like to learn from this dataset?",
-                    "analysisType": "Statistical Analysis",
-                    "sourceSheetId": primary_sheet_id,
-                    "operation": "statistical",
-                    "metadata": {
-                        "error": True,
-                        "error_message": str(e)
-                    }
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
                 }
+            )
