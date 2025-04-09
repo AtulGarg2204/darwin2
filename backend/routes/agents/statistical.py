@@ -21,7 +21,10 @@ class StatisticalAgent:
         """Initialize the EnhancedStatisticalAgent with the OpenAI client."""
         if os.getenv("USE_TOGETHER"):
             try:
-                self.client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
+                api_key = os.getenv("TOGETHER_API_KEY")
+                # export together api key to environment variable
+                os.environ["TOGETHER_API_KEY"] = api_key
+                self.client = Together()
                 self.model = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
             except Exception as e:
                 print(f"Error loading Together API: {str(e)}")

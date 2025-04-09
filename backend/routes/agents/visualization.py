@@ -6,6 +6,7 @@ from fastapi import HTTPException
 import pandas as pd
 import numpy as np
 import traceback
+from together import Together
 
 import dotenv
 dotenv.load_dotenv()
@@ -13,7 +14,24 @@ dotenv.load_dotenv()
 class DataVizualizationAgent:
     def __init__(self):
         """Initialize the DataVizualizationAgent with the OpenAI client."""
-        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if os.getenv("USE_TOGETHER"):
+            print("Using Together API...")
+            try:
+                api_key = os.getenv("TOGETHER_API_KEY")
+                # export together api key to environment variable
+                os.environ["TOGETHER_API_KEY"] = api_key
+                self.client = Together()
+                self.model = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+            except Exception as e:
+                print(f"Error loading Together API: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to load Together API.")
+        else:
+            try:
+                self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                self.model = "gpt-4o"
+            except Exception as e:
+                print(f"Error loading OpenAI API: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to load OpenAI API.")
     
     def _create_dataframe_from_raw(self, raw_data: List[Any]) -> pd.DataFrame:
         """Convert raw data to a pandas DataFrame."""
@@ -187,8 +205,8 @@ class DataVizualizationAgent:
             """
             
             # Get OpenAI analysis
-            analysis_response = self.openai_client.chat.completions.create(
-                model="gpt-4o",
+            analysis_response = self.client.chat.completions.create(
+                model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a data visualization API. Return only valid JSON with no comments, no markdown, and no explanation."},
                     {"role": "user", "content": analysis_prompt}
