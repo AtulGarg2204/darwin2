@@ -9,6 +9,8 @@ import traceback
 import scipy.stats as stats
 import matplotlib.pyplot as plt
 import seaborn as sns
+from together import Together
+
 try:
     import statsmodels.api as sm
 except ImportError:
@@ -17,7 +19,20 @@ except ImportError:
 class StatisticalAgent:
     def __init__(self):
         """Initialize the EnhancedStatisticalAgent with the OpenAI client."""
-        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if os.getenv("USE_TOGETHER"):
+            try:
+                self.client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
+                self.model = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+            except Exception as e:
+                print(f"Error loading Together API: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to load Together API.")
+        else:
+            try:
+                self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                self.model = "gpt-4o"
+            except Exception as e:
+                print(f"Error loading OpenAI API: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to load OpenAI API.")
     
     def _create_dataframe_from_raw(self, raw_data: List[Any]) -> pd.DataFrame:
         """Convert raw data to a pandas DataFrame with thorough cleaning."""
@@ -266,7 +281,7 @@ class StatisticalAgent:
         {json.dumps(data_profile, indent=2)}
         ```
 
-        Create a comprehensive statistical analysis package with these components:
+        Create a comprehensive statistical analysis package including visualization with these components:
 
         1. analysis_type: The main type of statistical analysis needed (e.g., 'descriptive', 'correlation', 'hypothesis_testing', 'regression', 'time_series')
         
@@ -284,7 +299,7 @@ class StatisticalAgent:
               safe_groupby_agg(df, ['groupby_column'], {{'value_column': 'mean'}})
            - DO NOT include markdown formatting (```python) in your code
         
-        4. visualizations: Array of visualization specifications, each with:
+        4. visualizations(ALWAYS INCLUDE ATLEAST ONE CONFIG): Array of visualization specifications, each with:
            - type: Chart type (bar, line, scatter, pie, heatmap)
            - title: Chart title
            - x_axis: Column for x-axis
@@ -329,7 +344,6 @@ class StatisticalAgent:
 
         IMPORTANT SAFETY CHECKS:
             - ALWAYS check if a function return value is None before using it
-            - ALWAYS include visualization specifications
             - Especially for safe_groupby_agg function which may return None
             - Example: result = safe_groupby_agg(...); if result is not None: # then use result
 
@@ -337,8 +351,8 @@ class StatisticalAgent:
         """
 
         # Get analysis package from OpenAI
-        response = self.openai_client.chat.completions.create(
-            model="gpt-4o",
+        response = self.client.chat.completions.create(
+            model=self.model,
             messages=[
                 {"role": "system", "content": "You are a statistical analysis API that returns robust, executable Python code without markdown formatting."},
                 {"role": "user", "content": prompt}
@@ -685,13 +699,13 @@ class StatisticalAgent:
         """
         
         # Get interpretation from OpenAI
-        response = self.openai_client.chat.completions.create(
-            model="gpt-4o",
+        response = self.client.chat.completions.create(
+            model=self.model,
             messages=[
                 {"role": "system", "content": "You are a statistical interpreter who explains results clearly to non-experts."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
+            temperature=0.2,
             max_tokens=800
         )
         
@@ -753,8 +767,8 @@ class StatisticalAgent:
         """
         
         # Get basic analysis from OpenAI
-        response = self.openai_client.chat.completions.create(
-            model="gpt-4o",
+        response = self.client.chat.completions.create(
+            model=self.model,
             messages=[
                 {"role": "system", "content": "You are a helpful data analysis assistant that provides useful insights from basic data."},
                 {"role": "user", "content": prompt}
@@ -842,17 +856,21 @@ class StatisticalAgent:
             
             # Check for analysis type
             if analysis_package.get("analysis_type") == "none":
+                print("Empty dataset, no analysis performed. Defaulting to basic analysis.")
                 # Fall back to basic analysis
                 return await self._generate_basic_analysis(df, request.message, primary_sheet_id, target_sheet_id)
             
             # Execute the analysis code
+            print("CODE GENERATED:")
+            print(analysis_package["implementation"])
             analysis_result = self._execute_analysis(analysis_package["implementation"], df)
             
             # Check if analysis was successful
             if "error" in analysis_result and not any(k for k in analysis_result.keys() if k != "error" and k != "traceback"):
-                # Analysis failed completely, use basic analysis
-                print(f"Analysis failed: {analysis_result.get('error')}")
-                return await self._generate_basic_analysis(df, request.message, primary_sheet_id, target_sheet_id)
+                # Analysis failed retry
+                analysis_package = await self._create_statistical_analysis(request.message, df, data_profile)
+                analysis_result = self._execute_analysis(analysis_package["implementation"], df)
+
             
             # Generate chart configurations
             chart_configs = self._generate_chart_configs(
