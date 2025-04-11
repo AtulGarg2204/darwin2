@@ -270,23 +270,330 @@ const Dashboard = forwardRef(({
     
 
    // Update format handling function to work with sheets
+// const handleFormatChange = (type, value) => {
+//     if (!activeSheet?.activeCell) return;
+    
+//     const { row, col } = activeSheet.activeCell;
+//     const cellKey = `${row}-${col}`;
+    
+//     // Get current cell formats for the active sheet
+//     const cellFormats = activeSheet.cellFormats || {};
+//     const currentFormat = cellFormats[cellKey] || {};
+    
+//     let newFormat = { ...currentFormat };
+//     let newData = [...activeSheet.data];
+//     let cellValue = activeSheet.data[row]?.[col];
+
+//     switch (type) {
+//         case 'toggleCommas':
+//             if (!isNaN(parseFloat(cellValue))) {
+//                 newFormat.useCommas = !currentFormat.useCommas;
+//             }
+//             break;
+//         case 'decreaseDecimals':
+//             newFormat.decimals = Math.max((currentFormat.decimals || 2) - 1, 0);
+//             break;
+//         case 'increaseDecimals':
+//             newFormat.decimals = (currentFormat.decimals || 2) + 1;
+//             break;
+//         case 'currency':
+//             newFormat.isCurrency = !currentFormat.isCurrency;
+//             break;
+//         case 'percentage':
+//             if (!isNaN(parseFloat(cellValue))) {
+//                 newFormat.isPercentage = !currentFormat.isPercentage;
+//                 if (newFormat.isPercentage && !currentFormat.isPercentage) {
+//                     newData[row][col] = parseFloat(cellValue) / 100;
+//                 } else if (!newFormat.isPercentage && currentFormat.isPercentage) {
+//                     newData[row][col] = parseFloat(cellValue) * 100;
+//                 }
+//             }
+//             break;
+//         case 'numberFormat':
+//             // Handle general format reset
+//             if (value === 'general') {
+//                 // Reset all number formatting
+//                 delete newFormat.useCommas;
+//                 delete newFormat.decimals;
+//                 delete newFormat.isCurrency;
+//                 delete newFormat.isPercentage;
+//             }
+//             break;
+//         case 'dateFormat':
+//             // Apply date formatting
+//             newFormat.dateFormat = value;
+//             // If the cell doesn't contain a date, try to convert it
+//             if (cellValue && !isNaN(Date.parse(cellValue))) {
+                
+//                 if (value === 'short') {
+//                     newFormat.isDate = true;
+//                     newFormat.dateType = 'short';
+//                 } else if (value === 'long') {
+//                     newFormat.isDate = true;
+//                     newFormat.dateType = 'long';
+//                 } else if (value === 'time') {
+//                     newFormat.isDate = true;
+//                     newFormat.dateType = 'time';
+//                 }
+//             }
+//             break;
+//         case 'bold':
+//             newFormat.bold = !currentFormat.bold;
+//             break;
+//         case 'italic':
+//             newFormat.italic = !currentFormat.italic;
+//             break;
+//         case 'underline':
+//             newFormat.underline = !currentFormat.underline;
+//             break;
+//         case 'strikethrough':
+//             newFormat.strikethrough = !currentFormat.strikethrough;
+//             break;
+//         case 'textColor':
+//             newFormat.textColor = value;
+//             break;
+//         case 'fillColor':
+//             newFormat.fillColor = value;
+//             break;
+//         case 'align':
+//             newFormat.align = value;
+//             break;
+//         case 'border':
+//             // Handle border styles
+//             if (!newFormat.borders) newFormat.borders = {};
+            
+//             if (value === 'all') {
+//                 newFormat.borders = { top: true, right: true, bottom: true, left: true };
+//             } else if (value === 'outside') {
+//                 newFormat.borders = { top: true, right: true, bottom: true, left: true, inside: false };
+//             } else if (value === 'none') {
+//                 newFormat.borders = {};
+//             } else {
+//                 // Set individual borders (top, bottom, left, right)
+//                 newFormat.borders[value] = !newFormat.borders[value];
+//             }
+//             break;
+//         case 'clear':
+//             // Clear all formatting
+//             newFormat = {};
+//             break;
+//         default:
+//             // Keep existing format for unhandled types
+//             return;
+//     }
+
+//     // Update the cell formats for this sheet
+//     const updatedSheets = { ...sheets };
+//     updatedSheets[activeSheetId].cellFormats = {
+//         ...cellFormats,
+//         [cellKey]: newFormat
+//     };
+
+//     // If data changed, update it too
+//     if (newData !== activeSheet.data) {
+//         updatedSheets[activeSheetId].data = newData;
+//     }
+
+//     onUpdateSheetData(updatedSheets);
+// };
+// Update this function in your Dashboard.js file
+
+// Corrected handleFormatChange function for Dashboard.js
+
 const handleFormatChange = (type, value) => {
     if (!activeSheet?.activeCell) return;
     
-    const { row, col } = activeSheet.activeCell;
-    const cellKey = `${row}-${col}`;
-    
-    // Get current cell formats for the active sheet
-    const cellFormats = activeSheet.cellFormats || {};
-    const currentFormat = cellFormats[cellKey] || {};
-    
-    let newFormat = { ...currentFormat };
-    let newData = [...activeSheet.data];
-    let cellValue = activeSheet.data[row]?.[col];
+    // We need to check if there's a selection in the DataGrid component
+    // Since selection state is managed in DataGrid, we'll need to communicate with it
+    if (dataGridRef.current && dataGridRef.current.getSelection) {
+        // Get the current selection from DataGrid if available
+        const selection = dataGridRef.current.getSelection();
+        
+        // Create a copy of the sheets data and formats
+        const updatedSheets = { ...sheets };
+        const sheetData = [...activeSheet.data];
+        const cellFormats = { ...(activeSheet.cellFormats || {}) };
+        
+        // Flag to track if data is modified (for percentage conversion, etc.)
+        let dataModified = false;
+        
+        if (selection && selection.start && selection.end) {
+            // Apply format to all cells in the selection
+            const startRow = Math.min(selection.start.row, selection.end.row);
+            const endRow = Math.max(selection.start.row, selection.end.row);
+            const startCol = Math.min(selection.start.col, selection.end.col);
+            const endCol = Math.max(selection.start.col, selection.end.col);
+            
+            // Process each cell in the selection
+            for (let row = startRow; row <= endRow; row++) {
+                for (let col = startCol; col <= endCol; col++) {
+                    applyFormatToCell(row, col, type, value, sheetData, cellFormats, dataModified);
+                }
+            }
+        } else {
+            // If no selection is available, just format the active cell
+            const { row, col } = activeSheet.activeCell;
+            applyFormatToCell(row, col, type, value, sheetData, cellFormats, dataModified);
+        }
+        
+        // Update the sheet with new formats and possibly modified data
+        updatedSheets[activeSheetId] = {
+            ...activeSheet,
+            cellFormats: cellFormats,
+            data: dataModified ? sheetData : activeSheet.data
+        };
+        
+        // Update all sheets
+        onUpdateSheetData(updatedSheets);
+    } else {
+        // Fallback to just formatting the active cell if DataGrid ref isn't available
+        // This is your original formatting logic for a single cell
+        const { row, col } = activeSheet.activeCell;
+        const cellKey = `${row}-${col}`;
+        
+        // Get current cell formats for the active sheet
+        const cellFormats = activeSheet.cellFormats || {};
+        const currentFormat = cellFormats[cellKey] || {};
+        
+        let newFormat = { ...currentFormat };
+        let newData = [...activeSheet.data];
+        let cellValue = activeSheet.data[row]?.[col];
 
+        switch (type) {
+            case 'toggleCommas':
+                if (!isNaN(parseFloat(cellValue))) {
+                    newFormat.useCommas = !currentFormat.useCommas;
+                }
+                break;
+            case 'decreaseDecimals':
+                newFormat.decimals = Math.max((currentFormat.decimals || 2) - 1, 0);
+                break;
+            case 'increaseDecimals':
+                newFormat.decimals = (currentFormat.decimals || 2) + 1;
+                break;
+            case 'currency':
+                newFormat.isCurrency = !currentFormat.isCurrency;
+                break;
+            case 'percentage':
+                if (!isNaN(parseFloat(cellValue))) {
+                    newFormat.isPercentage = !currentFormat.isPercentage;
+                    if (newFormat.isPercentage && !currentFormat.isPercentage) {
+                        newData[row][col] = parseFloat(cellValue) / 100;
+                    } else if (!newFormat.isPercentage && currentFormat.isPercentage) {
+                        newData[row][col] = parseFloat(cellValue) * 100;
+                    }
+                }
+                break;
+            case 'numberFormat':
+                // Handle general format reset
+                if (value === 'general') {
+                    // Reset all number formatting
+                    delete newFormat.useCommas;
+                    delete newFormat.decimals;
+                    delete newFormat.isCurrency;
+                    delete newFormat.isPercentage;
+                }
+                break;
+            case 'dateFormat':
+                // Apply date formatting
+                newFormat.dateFormat = value;
+                // If the cell doesn't contain a date, try to convert it
+                if (cellValue && !isNaN(Date.parse(cellValue))) {
+                    
+                    if (value === 'short') {
+                        newFormat.isDate = true;
+                        newFormat.dateType = 'short';
+                    } else if (value === 'long') {
+                        newFormat.isDate = true;
+                        newFormat.dateType = 'long';
+                    } else if (value === 'time') {
+                        newFormat.isDate = true;
+                        newFormat.dateType = 'time';
+                    }
+                } else if (cellValue && !isNaN(parseFloat(cellValue))) {
+                    // Try to handle Excel date serial numbers
+                    newFormat.isDate = true;
+                    newFormat.dateType = value;
+                }
+                break;
+            case 'bold':
+                newFormat.bold = !currentFormat.bold;
+                break;
+            case 'italic':
+                newFormat.italic = !currentFormat.italic;
+                break;
+            case 'underline':
+                newFormat.underline = !currentFormat.underline;
+                break;
+            case 'strikethrough':
+                newFormat.strikethrough = !currentFormat.strikethrough;
+                break;
+            case 'textColor':
+                newFormat.textColor = value;
+                break;
+            case 'fillColor':
+                newFormat.fillColor = value;
+                break;
+            case 'align':
+                newFormat.align = value;
+                break;
+            case 'border':
+                // Handle border styles
+                if (!newFormat.borders) newFormat.borders = {};
+                
+                if (value === 'all') {
+                    newFormat.borders = { top: true, right: true, bottom: true, left: true };
+                } else if (value === 'outside') {
+                    newFormat.borders = { top: true, right: true, bottom: true, left: true, inside: false };
+                } else if (value === 'none') {
+                    newFormat.borders = {};
+                } else {
+                    // Set individual borders (top, bottom, left, right)
+                    newFormat.borders[value] = !newFormat.borders[value];
+                }
+                break;
+            case 'clear':
+                // Clear all formatting
+                newFormat = {};
+                break;
+            default:
+                // Keep existing format for unhandled types
+                return;
+        }
+
+        // Update the cell formats for this sheet
+        const updatedSheets = { ...sheets };
+        updatedSheets[activeSheetId].cellFormats = {
+            ...cellFormats,
+            [cellKey]: newFormat
+        };
+
+        // If data changed, update it too
+        if (newData !== activeSheet.data) {
+            updatedSheets[activeSheetId].data = newData;
+        }
+
+        onUpdateSheetData(updatedSheets);
+    }
+};
+
+// Helper function to apply formatting to a single cell
+function applyFormatToCell(row, col, type, value, sheetData, cellFormats, dataModified) {
+    const cellKey = `${row}-${col}`;
+    const currentFormat = cellFormats[cellKey] || {};
+    let newFormat = { ...currentFormat };
+    
+    // Ensure the row exists
+    if (!sheetData[row]) {
+        sheetData[row] = [];
+    }
+    
+    // Get the cell value
+    const cellValue = sheetData[row][col];
+    
     switch (type) {
         case 'toggleCommas':
-            if (!isNaN(parseFloat(cellValue))) {
+            if (cellValue !== undefined && !isNaN(parseFloat(cellValue))) {
                 newFormat.useCommas = !currentFormat.useCommas;
             }
             break;
@@ -300,12 +607,14 @@ const handleFormatChange = (type, value) => {
             newFormat.isCurrency = !currentFormat.isCurrency;
             break;
         case 'percentage':
-            if (!isNaN(parseFloat(cellValue))) {
+            if (cellValue !== undefined && !isNaN(parseFloat(cellValue))) {
                 newFormat.isPercentage = !currentFormat.isPercentage;
                 if (newFormat.isPercentage && !currentFormat.isPercentage) {
-                    newData[row][col] = parseFloat(cellValue) / 100;
+                    sheetData[row][col] = parseFloat(cellValue) / 100;
+                    dataModified = true;
                 } else if (!newFormat.isPercentage && currentFormat.isPercentage) {
-                    newData[row][col] = parseFloat(cellValue) * 100;
+                    sheetData[row][col] = parseFloat(cellValue) * 100;
+                    dataModified = true;
                 }
             }
             break;
@@ -317,26 +626,41 @@ const handleFormatChange = (type, value) => {
                 delete newFormat.decimals;
                 delete newFormat.isCurrency;
                 delete newFormat.isPercentage;
+                delete newFormat.isDate;
+                delete newFormat.dateType;
             }
             break;
-        case 'dateFormat':
-            // Apply date formatting
-            newFormat.dateFormat = value;
-            // If the cell doesn't contain a date, try to convert it
-            if (cellValue && !isNaN(Date.parse(cellValue))) {
-                
-                if (value === 'short') {
-                    newFormat.isDate = true;
-                    newFormat.dateType = 'short';
-                } else if (value === 'long') {
-                    newFormat.isDate = true;
-                    newFormat.dateType = 'long';
-                } else if (value === 'time') {
-                    newFormat.isDate = true;
-                    newFormat.dateType = 'time';
+            case 'dateFormat':
+                // Apply date formatting
+                newFormat.dateFormat = value;
+                newFormat.isDate = true;
+                newFormat.dateType = value; // Store the specific format type (short, long, dd-mm-yyyy, etc.)
+            
+                // Try to handle different types of cell values that could be dates
+                if (cellValue) {
+                    // Handle special date objects (already detected as dates)
+                    if (typeof cellValue === 'object' && cellValue.isDate) {
+                        // Just update the format type, no need to re-validate
+                        newFormat.isDate = true;
+                        newFormat.dateType = value;
+                    }
+                    // Handle string dates (try to parse them)
+                    else if (typeof cellValue === 'string' && !isNaN(Date.parse(cellValue))) {
+                        // Regular date string - mark as date and set format type
+                        newFormat.isDate = true;
+                        newFormat.dateType = value;
+                    }
+                    // Handle potential Excel date serial numbers
+                    else if (!isNaN(parseFloat(cellValue))) {
+                        const numValue = parseFloat(cellValue);
+                        // Only consider values in typical Excel date range
+                        if (numValue > 0 && numValue < 50000) {
+                            newFormat.isDate = true;
+                            newFormat.dateType = value;
+                        }
+                    }
                 }
-            }
-            break;
+                break;
         case 'bold':
             newFormat.bold = !currentFormat.bold;
             break;
@@ -381,22 +705,10 @@ const handleFormatChange = (type, value) => {
             // Keep existing format for unhandled types
             return;
     }
-
-    // Update the cell formats for this sheet
-    const updatedSheets = { ...sheets };
-    updatedSheets[activeSheetId].cellFormats = {
-        ...cellFormats,
-        [cellKey]: newFormat
-    };
-
-    // If data changed, update it too
-    if (newData !== activeSheet.data) {
-        updatedSheets[activeSheetId].data = newData;
-    }
-
-    onUpdateSheetData(updatedSheets);
-};
-
+    
+    // Update the format for this cell
+    cellFormats[cellKey] = newFormat;
+}
     // Get current cell format for the active sheet
     const getCurrentFormat = () => {
         if (!activeSheet?.activeCell) return {};

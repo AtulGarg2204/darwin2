@@ -227,49 +227,136 @@ const DataGrid = forwardRef(({
   }, [data, headers, setData]);
 
   // Function to handle cell changes (including formulas)
-  const handleCellChange = (rowIndex, colIndex, value) => {
-    const newData = [...data];
-    if (!newData[rowIndex]) {
-      newData[rowIndex] = [];
-    }
+  // const handleCellChange = (rowIndex, colIndex, value) => {
+  //   const newData = [...data];
+  //   if (!newData[rowIndex]) {
+  //     newData[rowIndex] = [];
+  //   }
 
-    const cellKey = `${rowIndex}-${colIndex}`;
+  //   const cellKey = `${rowIndex}-${colIndex}`;
 
-    if (value.startsWith('=')) {
-      // If it's just '=' or we're still typing the formula, store the raw value
-      if (value === '=' ) {
-        newData[rowIndex][colIndex] = value;
-        setFormulas(prev => ({
-          ...prev,
-          [cellKey]: value
-        }));
-      } else {
-        // Only evaluate if it's a complete formula
-        setFormulas(prev => ({
-          ...prev,
-          [cellKey]: value
-        }));
-        const result = FormulaEngine.evaluateFormula(value, data);
-        newData[rowIndex][colIndex] = result;
-      }
+  //   if (value.startsWith('=')) {
+  //     // If it's just '=' or we're still typing the formula, store the raw value
+  //     if (value === '=' ) {
+  //       newData[rowIndex][colIndex] = value;
+  //       setFormulas(prev => ({
+  //         ...prev,
+  //         [cellKey]: value
+  //       }));
+  //     } else {
+  //       // Only evaluate if it's a complete formula
+  //       setFormulas(prev => ({
+  //         ...prev,
+  //         [cellKey]: value
+  //       }));
+  //       const result = FormulaEngine.evaluateFormula(value, data);
+  //       newData[rowIndex][colIndex] = result;
+  //     }
+  //   } else {
+  //     // If it's not a formula, remove any stored formula and store the value
+  //     const newFormulas = { ...formulas };
+  //     delete newFormulas[cellKey];
+  //     setFormulas(newFormulas);
+  //     newData[rowIndex][colIndex] = value;
+  //   }
+
+  //   setData(newData);
+
+  //   // Re-evaluate all formulas except the current cell
+  //   Object.entries(formulas).forEach(([key, formula]) => {
+  //     const [r, c] = key.split('-').map(Number);
+  //     if (r !== rowIndex || c !== colIndex) {
+  //       newData[r][c] = FormulaEngine.evaluateFormula(formula, newData);
+  //     }
+  //   });
+  // };
+  // Function to handle cell changes (including formulas and dates)
+const handleCellChange = (rowIndex, colIndex, value) => {
+  const newData = [...data];
+  if (!newData[rowIndex]) {
+    newData[rowIndex] = [];
+  }
+
+  const cellKey = `${rowIndex}-${colIndex}`;
+  const oldValue = data[rowIndex]?.[colIndex];
+  
+  // Special handling for formulas
+  if (value.startsWith('=')) {
+    // If it's just '=' or we're still typing the formula, store the raw value
+    if (value === '=') {
+      newData[rowIndex][colIndex] = value;
+      setFormulas(prev => ({
+        ...prev,
+        [cellKey]: value
+      }));
     } else {
-      // If it's not a formula, remove any stored formula and store the value
+      // Only evaluate if it's a complete formula
+      setFormulas(prev => ({
+        ...prev,
+        [cellKey]: value
+      }));
+      const result = FormulaEngine.evaluateFormula(value, data);
+      newData[rowIndex][colIndex] = result;
+    }
+  } 
+  // Special handling for cells that were previously imported dates
+  else if (oldValue && typeof oldValue === 'object' && oldValue.isDate) {
+    // Try to parse the new value as a date
+    const newDate = new Date(value);
+    if (!isNaN(newDate.getTime())) {
+      // Valid date - preserve the date object format
+      newData[rowIndex][colIndex] = {
+        value: formatDate(newDate), // Format the date consistently
+        isDate: true,
+        originalSerial: oldValue.originalSerial // Preserve original serial if present
+      };
+    } else {
+      // No longer a valid date - convert to regular value
+      newData[rowIndex][colIndex] = value;
+      // Remove any stored formula
       const newFormulas = { ...formulas };
       delete newFormulas[cellKey];
       setFormulas(newFormulas);
+    }
+  }
+  else {
+    // If it's not a formula or date, remove any stored formula and store the value
+    const newFormulas = { ...formulas };
+    delete newFormulas[cellKey];
+    setFormulas(newFormulas);
+    
+    // Check if the input might be a date string (e.g., "09-06-2014")
+    const potentialDate = new Date(value);
+    if (value.includes('-') && !isNaN(potentialDate.getTime())) {
+      // Store as a date object
+      newData[rowIndex][colIndex] = {
+        value: formatDate(potentialDate),
+        isDate: true
+      };
+    } else {
+      // Regular value
       newData[rowIndex][colIndex] = value;
     }
+  }
 
-    setData(newData);
+  setData(newData);
 
-    // Re-evaluate all formulas except the current cell
-    Object.entries(formulas).forEach(([key, formula]) => {
-      const [r, c] = key.split('-').map(Number);
-      if (r !== rowIndex || c !== colIndex) {
-        newData[r][c] = FormulaEngine.evaluateFormula(formula, newData);
-      }
-    });
-  };
+  // Re-evaluate all formulas except the current cell
+  Object.entries(formulas).forEach(([key, formula]) => {
+    const [r, c] = key.split('-').map(Number);
+    if (r !== rowIndex || c !== colIndex) {
+      newData[r][c] = FormulaEngine.evaluateFormula(formula, newData);
+    }
+  });
+};
+
+// Helper function to format dates consistently
+const formatDate = (date) => {
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
 
   // Effect to update formula results when data changes
   useEffect(() => {
@@ -591,11 +678,34 @@ const DataGrid = forwardRef(({
   }, [activeCell, data, headers.length, expandGrid, onCellClick]);
 
   // Expose createChart and expandGrid to parent components
+  // useImperativeHandle(ref, () => ({
+  //   createChart: (type, startCell, chartConfig) => 
+  //     ChartManager.createChart(type, startCell, chartConfig, data, setData, chartSizes),
+  //   expandGrid: (addRows, addCols) => 
+  //     expandGrid(addRows, addCols)
+  // }));
   useImperativeHandle(ref, () => ({
     createChart: (type, startCell, chartConfig) => 
       ChartManager.createChart(type, startCell, chartConfig, data, setData, chartSizes),
     expandGrid: (addRows, addCols) => 
-      expandGrid(addRows, addCols)
+      expandGrid(addRows, addCols),
+    getSelection: () => {
+      // Return the current selection state
+      if (selectionStart && selectionEnd) {
+        return {
+          start: selectionStart,
+          end: selectionEnd
+        };
+      }
+      return null;
+    },
+    handleFormatUpdate: (updatedFormats, newData) => {
+      // Handle format updates from context menu or elsewhere
+      console.log("Format update requested", { 
+        formatCount: Object.keys(updatedFormats).length,
+        dataChanged: newData !== data 
+      });
+    }
   }));
 
   // Grid styling with zoom level

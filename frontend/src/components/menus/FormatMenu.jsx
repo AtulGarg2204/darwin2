@@ -109,17 +109,22 @@ const FormatMenu = ({ onFormatChange }) => {
                 </div>
 
                 {/* Date and Time */}
-                <div className="relative group/sub">
-                    <button className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
-                        <Calendar className="w-4 h-4" />
-                        <span>Date and time</span>
-                    </button>
-                    <div className="absolute hidden group-hover/sub:block left-full top-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px]">
-                        <button onClick={() => handleDateFormat('short')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Short Date</button>
-                        <button onClick={() => handleDateFormat('long')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Long Date</button>
-                        <button onClick={() => handleDateFormat('time')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Time</button>
-                    </div>
-                </div>
+               
+<div className="relative group/sub">
+  <button className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-2">
+    <Calendar className="w-4 h-4" />
+    <span>Date and time</span>
+  </button>
+  <div className="absolute hidden group-hover/sub:block left-full top-0 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px]">
+    <button onClick={() => handleDateFormat('short')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Short Date (MM/DD/YYYY)</button>
+    <button onClick={() => handleDateFormat('long')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Long Date (Month DD, YYYY)</button>
+    <button onClick={() => handleDateFormat('dd-mm-yyyy')} className="w-full px-4 py-2 text-left hover:bg-gray-100">DD-MM-YYYY</button>
+    <button onClick={() => handleDateFormat('dd.mm.yyyy')} className="w-full px-4 py-2 text-left hover:bg-gray-100">DD.MM.YYYY</button>
+    <button onClick={() => handleDateFormat('yyyy-mm-dd')} className="w-full px-4 py-2 text-left hover:bg-gray-100">YYYY-MM-DD (ISO)</button>
+    <button onClick={() => handleDateFormat('d-mmm-yy')} className="w-full px-4 py-2 text-left hover:bg-gray-100">D-MMM-YY (1-Jan-23)</button>
+    <button onClick={() => handleDateFormat('time')} className="w-full px-4 py-2 text-left hover:bg-gray-100">Time</button>
+  </div>
+</div>
 
                 {/* Text formatting */}
                 <div className="relative group/sub">

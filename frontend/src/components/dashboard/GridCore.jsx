@@ -37,7 +37,20 @@ const GridCore = {
       setVisibleCols(currentColCount + addCols);
     }
   },
-
+  excelSerialToDate: (serial) => {
+    // Excel dates start at January 1, 1900
+    const date = new Date(1900, 0, 0);
+    
+    // Excel incorrectly treats 1900 as a leap year, adjust for dates after Feb 28, 1900
+    let adjustedSerial = serial;
+    if (serial > 59) { // Feb 29, 1900 (doesn't exist)
+      adjustedSerial -= 1;
+    }
+    
+    // Add days
+    date.setDate(date.getDate() + adjustedSerial);
+    return date;
+  },
   // Cell selection
   isCellSelected: (rowIndex, colIndex, selectionStart, selectionEnd) => {
     if (!selectionStart || !selectionEnd) return false;
@@ -51,61 +64,96 @@ const GridCore = {
            colIndex >= startCol && colIndex <= endCol;
   },
 
- // Cell formatting
-formatCellValue: (value, rowIndex, colIndex, cellFormats) => {
-  if (value === '' || value === null || value === undefined) return '';
-  
-  const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
-  let formattedValue = value;
-  
-  // Handle date formatting
-  if (format.isDate && typeof value === 'string') {
-    try {
-      const date = new Date(value);
-      if (!isNaN(date.getTime())) {
-        if (format.dateType === 'short') {
-          formattedValue = date.toLocaleDateString();
-        } else if (format.dateType === 'long') {
-          formattedValue = date.toLocaleDateString(undefined, { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          });
-        } else if (format.dateType === 'time') {
-          formattedValue = date.toLocaleTimeString();
-        }
-        return formattedValue;
-      }
-    } catch (e) {
-      console.error('Error formatting date:', e);
-    }
-  }
-  
-  // Handle number formatting
-  if (!isNaN(parseFloat(value))) {
-    let numValue = parseFloat(value);
+  formatCellValue: (value, rowIndex, colIndex, cellFormats) => {
+    // Handle empty values
+    if (value === '' || value === null || value === undefined) return '';
     
-    if (format.isPercentage) {
-      formattedValue = `${(numValue * 100).toFixed(format.decimals || 0)}%`;
-    } else {
-      if (format.useCommas) {
-        formattedValue = numValue.toLocaleString('en-US', {
-          minimumFractionDigits: format.decimals || 0,
-          maximumFractionDigits: format.decimals || 0
-        });
-      } else {
-        formattedValue = numValue.toFixed(format.decimals || 0);
-      }
-      
-      if (format.isCurrency) {
-        formattedValue = `$${formattedValue}`;
+    // Handle complex cell objects (used for Excel date serials)
+    if (value && typeof value === 'object' && value.isDate) {
+      // Already processed date from Excel import
+      return value.value; // Return the pre-formatted date string
+    }
+    
+    const format = cellFormats[`${rowIndex}-${colIndex}`] || {};
+    let formattedValue = value;
+    
+    // Handle date formatting
+    if (format.isDate) {
+      try {
+        // Convert value to a date object based on its type
+        let date;
+        
+        if (typeof value === 'string') {
+          date = new Date(value);
+        } else if (typeof value === 'number' && value > 0 && value < 50000) {
+          date = GridCore.excelSerialToDate(value);
+        } else if (value instanceof Date) {
+          date = value;
+        }
+        
+        if (date && !isNaN(date.getTime())) {
+          switch (format.dateType) {
+            case 'short':
+              formattedValue = date.toLocaleDateString();
+              break;
+            case 'long':
+              formattedValue = date.toLocaleDateString(undefined, { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              });
+              break;
+            case 'dd-mm-yyyy':
+              formattedValue = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getFullYear()}`;
+              break;
+            case 'dd.mm.yyyy':
+              formattedValue = `${date.getDate().toString().padStart(2, '0')}.${(date.getMonth() + 1).toString().padStart(2, '0')}.${date.getFullYear()}`;
+              break;
+            case 'yyyy-mm-dd':
+              formattedValue = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+              break;
+            case 'd-mmm-yy':
+              const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+              formattedValue = `${date.getDate()}-${months[date.getMonth()]}-${date.getFullYear().toString().substr(2)}`;
+              break;
+            case 'time':
+              formattedValue = date.toLocaleTimeString();
+              break;
+            default:
+              formattedValue = date.toLocaleDateString();
+          }
+          return formattedValue;
+        }
+      } catch (e) {
+        console.error('Error formatting date:', e);
       }
     }
-  }
-  
-  return formattedValue;
-},
+    
+    // Handle number formatting
+    if (!isNaN(parseFloat(value))) {
+      let numValue = parseFloat(value);
+      
+      if (format.isPercentage) {
+        formattedValue = `${(numValue * 100).toFixed(format.decimals || 0)}%`;
+      } else {
+        if (format.useCommas) {
+          formattedValue = numValue.toLocaleString('en-US', {
+            minimumFractionDigits: format.decimals || 0,
+            maximumFractionDigits: format.decimals || 0
+          });
+        } else {
+          formattedValue = numValue.toFixed(format.decimals || 0);
+        }
+        
+        if (format.isCurrency) {
+          formattedValue = `$${formattedValue}`;
+        }
+      }
+    }
+    
+    return formattedValue;
+  },
 
 // Cell styling
 getCellStyle: (rowIndex, colIndex, cellFormats) => {
@@ -133,6 +181,7 @@ getCellStyle: (rowIndex, colIndex, cellFormats) => {
     ...borderStyle
   };
 },
+
   // Generate column headers beyond Z (AA, AB, etc.)
   generateColumnLabel: (index) => {
     let label = '';
