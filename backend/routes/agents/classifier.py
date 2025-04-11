@@ -5,10 +5,26 @@ import os
 import json
 from fastapi import HTTPException, Depends
 import pandas as pd
+from together import Together
 
 class RequestClassifier:
     def __init__(self):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        if os.getenv("USE_TOGETHER"):
+            print("Using Together API...")
+            try:
+                self.client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
+                self.model = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
+            except Exception as e:
+                print(f"Error loading Together API: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to load Together API.")
+        else:
+            try:
+                self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                self.model = "gpt-4o"
+            except Exception as e:
+                print(f"Error loading OpenAI API: {str(e)}")
+                raise HTTPException(status_code=500, detail="Failed to load OpenAI API.")
+        
         
     async def classify(self, request_data: Dict[str, Any]) -> str:
         """
@@ -33,13 +49,14 @@ class RequestClassifier:
             "query_type": "informational"
         }
 
-        classification_prompt = f"""Analyze the following prompt and determine if it's requesting data transformation, visualization, statistical analysis, or simply asking a question about the data:
+        classification_prompt = f"""
+        Analyze the following prompt and determine if it's requesting data transformation, visualization, statistical analysis, or simply asking a question about the data:
 
         Prompt: {user_message}
 
         For statistical analysis,
         Users query requires any kind of interpretation of data, statistical tests, or analysis. 
-        Look for keywords related to:
+        Possible keywords related to statistical analysis are:
         - "analyze", "statistical", "statistics", "test", "hypothesis", "significance", "p-value"
         - Specific analysis types like "correlation", "regression", "t-test", "chi-square", "ANOVA"
         - Statistical concepts like "distribution", "normality", "variance", "standard deviation"
@@ -50,19 +67,18 @@ class RequestClassifier:
 
         For transformation:
         User asks for ONLY data manipulation or transformation without any visualization or statistical analysis.
-        Look for keywords related to:
+        Possible keywords related to transformation are:
         - Filtering (e.g., "filter", "where", "only show", "find", "exclude")
         - Sorting (e.g., "sort", "order", "arrange", "rank")
         - Aggregation (e.g., "group", "sum", "average", "count", "total", "by")
         - Column operations (e.g., "create column", "new column", "calculate", "rename", "drop column")
 
-        For visualization:
         User asks for ONLY visualization of data without any transformation or statistical analysis.
-        Look for keywords related to charts or graphs like:
+        Possible keywords related to visualization are:
         - "show me a chart/graph", "plot", "visualize", "create a chart", "graph this data"
         - Specific chart types like "bar chart", "pie chart", "line graph", "scatter plot"
 
-        For query (conversational questions), look for:
+        For query (conversational questions), possible hitpoints are:
         - Simple questions that ask for information about the data.
         - Do not require much analysis or transformation.
 
@@ -74,12 +90,51 @@ class RequestClassifier:
         5. statistical_type: If intent is 'statistical', specify the test type ('correlation', 'ttest', 'chi_square', 'anova', 'regression', 'distribution')
         6. query_type: If intent is 'query', specify the question type ('informational', 'comparative', 'exploratory')
 
-        Example response format:
-        {json.dumps(response_format)}"""
+        Example response format for each category:
+
+        1. Visualization example:
+        {json.dumps({
+            "intent": "visualization",
+            "reason": "User is asking for a visual representation of the data with a specific chart type",
+            "visualization_type": "bar",
+            "transformation_type": None,
+            "statistical_type": None,
+            "query_type": None
+        }, indent=2)}
+
+        2. Transformation example:
+        {json.dumps({
+            "intent": "transformation",
+            "reason": "User is asking for data to be filtered based on specific criteria",
+            "visualization_type": None,
+            "transformation_type": "filter",
+            "statistical_type": None,
+            "query_type": None
+        }, indent=2)}
+
+        3. Statistical example:
+        {json.dumps({
+            "intent": "statistical",
+            "reason": "User is asking for a correlation analysis between two variables",
+            "visualization_type": None,
+            "transformation_type": None,
+            "statistical_type": "correlation",
+            "query_type": None
+        }, indent=2)}
+
+        4. Query example:
+        {json.dumps({
+            "intent": "query",
+            "reason": "User is asking a simple informational question about the data",
+            "visualization_type": None,
+            "transformation_type": None,
+            "statistical_type": None,
+            "query_type": "informational"
+        }, indent=2)}"""
         
         # Get classification from OpenAI
         response = self.client.chat.completions.create(
-            model="gpt-4o",
+            model=self.model,
             messages=[
                 {"role": "system", "content": "You are a classification API. Return only the JSON response as specified in the example response format. Do not include markdown formatting or code blocks."},
                 {"role": "user", "content": classification_prompt}
