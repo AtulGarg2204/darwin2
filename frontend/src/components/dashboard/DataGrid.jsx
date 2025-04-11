@@ -203,7 +203,26 @@ const DataGrid = forwardRef(({
       document.removeEventListener('dragend', handleGlobalDragEnd);
     };
   }, []);
-  
+  useEffect(() => {
+    const handleColumnSelection = (e) => {
+      const { start, end } = e.detail;
+      
+      // Set selection state to select the entire column
+      setSelectionStart(start);
+      setSelectionEnd(end);
+      
+      // If there's a cell in the selection, make it the active cell
+      if (start && end) {
+        onCellClick(start.row, start.col);
+      }
+    };
+    
+    document.addEventListener('selectColumn', handleColumnSelection);
+    
+    return () => {
+      document.removeEventListener('selectColumn', handleColumnSelection);
+    };
+  }, [onCellClick]);
   // Update headers when data changes
   useEffect(() => {
     if (data && data[0]) {
