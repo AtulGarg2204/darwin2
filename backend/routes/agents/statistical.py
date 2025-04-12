@@ -561,11 +561,13 @@ class StatisticalAgent:
                 return str(obj)
     
     async def _generate_visualizations(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
-                                    source_sheet_id: str, target_sheet_id: str) -> List[Dict[str, Any]]:
+                                    source_sheet_id: str, target_sheet_id: str, original_request:str) -> List[Dict[str, Any]]:
         """Generate visualizations based on analysis results."""
         # Create visualization prompt
         prompt = f"""
         You are a data visualization expert. Based on the following analysis results, create appropriate visualizations.
+
+        Original USER REQUEST: "{original_request}"
 
         ANALYSIS RESULTS:
         ```json
@@ -773,7 +775,7 @@ class StatisticalAgent:
             print(json.dumps(analysis_result, indent=2)+"\n")
             
             # Generate visualizations
-            chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id)
+            chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
             
             # Generate interpretation
             interpretation = await self._generate_interpretation(
