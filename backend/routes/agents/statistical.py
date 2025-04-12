@@ -591,6 +591,14 @@ class StatisticalAgent:
 
         The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
         Include any necessary aggregations, sorting, filtering, or calculations.
+        
+        IMPORTANT: In your dataTransformationCode, you should directly access the df variable, NOT 'data'.
+        
+        For example:
+        - CORRECT: "result_df = pd.DataFrame(df['sub_category_distribution']).sort_values(by='Total_Sales', ascending=False)"
+        - INCORRECT: "result_df = pd.DataFrame(data['sub_category_distribution'])"
+        
+        Make sure ALL your dataTransformationCode uses 'df' as the variable name and NOT 'data'.
         """
 
         # Get visualization recommendations from OpenAI
