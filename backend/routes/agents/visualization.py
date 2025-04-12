@@ -270,13 +270,9 @@ class DataVizualizationAgent:
             
             # Handle empty chart data
             if not chart_data:
-                print("Warning: No chart data was generated")
-                # Create fallback data
-                chart_data = [
-                    {'name': f'Sample {i}', 'value': i * 10}
-                    for i in range(1, 6)
-                ]
-            # print first 5 rows of chart data
+                raise ValueError("No valid data points could be generated for the selected columns. This may be due to missing data, incompatible data types, or invalid column selections.")
+            
+            # Print first 5 rows of chart data
             print("Chart data sample:", chart_data[:5])
             
             # Create the final chart configuration
