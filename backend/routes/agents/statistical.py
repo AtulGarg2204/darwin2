@@ -689,12 +689,12 @@ class StatisticalAgent:
             analysis_package = await self._create_statistical_analysis(request.message, df, data_profile)
             
             # Execute the analysis code
-            print("CODE GENERATED:")
-            print(analysis_package["implementation"])
+            print("CODE GENERATED:\n</>\n")
+            print(analysis_package["implementation"]+"\n")
             analysis_result = self._execute_analysis(analysis_package["implementation"], df)
 
             print("ANALYSIS RESULT:")
-            print(json.dumps(analysis_result, indent=2))
+            print(json.dumps(analysis_result, indent=2)+"\n")
             
             # Generate visualizations
             chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id)
