@@ -1,3 +1,4 @@
+// Updated parts of Navbar.js
 import { Link } from 'react-router-dom';
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
@@ -6,9 +7,33 @@ import ViewMenu from '../menus/ViewMenu';
 import InsertMenu from '../menus/InsertMenu';
 import FormatMenu from '../menus/FormatMenu';
 import DataTypeMenu from '../menus/DataTypeMenu';
+// Import new filter menu
+import FilterMenu from '../menus/FilterMenu';
 
-const Navbar = ({ sheets, 
-    activeSheetId, currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad, showHeaders, setShowHeaders, showGridLines, setShowGridLines, zoomLevel, setZoomLevel, onFormatChange }) => {
+const Navbar = ({ 
+    sheets, 
+    activeSheetId, 
+    currentData, 
+    setCurrentData, 
+    activeCell, 
+    undoHistory, 
+    redoHistory, 
+    canUndo, 
+    canRedo, 
+    onNewFile, 
+    onDataLoad, 
+    showHeaders, 
+    setShowHeaders, 
+    showGridLines, 
+    setShowGridLines, 
+    zoomLevel, 
+    setZoomLevel, 
+    onFormatChange,
+    // New props for column filtering
+    selectedColumn,
+    onToggleColumnFilter,
+    filters
+}) => {
     
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileInputRef = useRef(null);
@@ -271,6 +296,15 @@ const handleSaveAs = () => {
 
                             {/* Format Menu */}
                             <FormatMenu onFormatChange={onFormatChange} />
+                            
+                            {/* NEW - Filter Menu */}
+                            <FilterMenu 
+                                selectedColumn={selectedColumn}
+                                onToggleColumnFilter={onToggleColumnFilter}
+                                hasFilters={filters && Object.keys(filters).length > 0}
+                                sheets={sheets}
+                                activeSheetId={activeSheetId}
+                            />
                             
                             {/* Data Type Menu */}
                             <DataTypeMenu 

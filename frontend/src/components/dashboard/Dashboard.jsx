@@ -1,11 +1,11 @@
-import { useState, useRef, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, forwardRef, useImperativeHandle,useEffect } from 'react';
 
 import DataGrid from './DataGrid';
 import ChatInterface from '../chat/ChatInterface';
 import Toolbar from './Toolbar';
 import SheetTabs from './SheetTabs'; // New component
 
-
+import StatisticsPanel from './StatisticsPanel'; // Import the new component
 const Dashboard = forwardRef(({ 
     sheets, 
     activeSheetId,
@@ -17,27 +17,85 @@ const Dashboard = forwardRef(({
     setActiveCell,
     showHeaders,
     showGridLines,
-    zoomLevel
+    zoomLevel,
+    selectedColumn,
+  onToggleColumnFilter,
+  onApplyFilter
 }, ref) => {
     const dataGridRef = useRef();
     
     // Get the active sheet
     const activeSheet = sheets[activeSheetId];
-    
+    const [visibleRows, setVisibleRows] = useState([]);
+    const [selectedRange, setSelectedRange] = useState(null);
     // Add state for cell formatting (now per sheet)
     const [formulaBar, setFormulaBar] = useState('');
+  // In Dashboard.js
+// Update the handleCellClick function to trigger statistics update
+const handleCellClick = (row, col) => {
+    const newActiveCell = { row, col };
+    setActiveCell(newActiveCell);
     
-    const handleCellClick = (row, col) => {
-        const newActiveCell = { row, col };
-        setActiveCell(newActiveCell);
-        
-        // Update formula bar with cell content or formula
-        const cellContent = activeSheet.data[row]?.[col] || '';
-        const cellKey = `${row}-${col}`;
-        const formula = activeSheet.formulas?.[cellKey];
-        setFormulaBar(formula || cellContent);
+    // Update formula bar with cell content or formula
+    const cellContent = activeSheet.data[row]?.[col] || '';
+    const cellKey = `${row}-${col}`;
+    const formula = activeSheet.formulas?.[cellKey];
+    setFormulaBar(formula || cellContent);
+    
+    // Immediately update statistics when a cell is clicked
+    setTimeout(() => {
+        handleSelectionChange();
+        handleVisibleRowsChange();
+    }, 0);
+};
+
+const handleSelectionChange = () => {
+    if (dataGridRef.current) {
+      const selection = dataGridRef.current.getSelection();
+      setSelectedRange(selection);
+    }
+  };
+  
+  const handleVisibleRowsChange = () => {
+    if (dataGridRef.current) {
+      const rows = dataGridRef.current.getVisibleRows();
+      setVisibleRows(rows);
+    }
+  };
+  
+  // Add this useEffect to detect selection changes
+  useEffect(() => {
+    // Initial load of selection and visible rows
+    handleSelectionChange();
+    handleVisibleRowsChange();
+    
+    // Set up event listeners for selection changes
+    const handleMouseUp = () => {
+      handleSelectionChange();
     };
     
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+  
+  // Add this useEffect to update when filters or data change
+  useEffect(() => {
+    handleVisibleRowsChange();
+  }, [activeSheet?.filters, activeSheet?.data]);
+    useEffect(() => {
+        if (dataGridRef.current) {
+            // Get current selection from DataGrid
+            const selection = dataGridRef.current.getSelection();
+            setSelectedRange(selection);
+            
+            // Get visible rows after filtering
+            const rows = dataGridRef.current.getVisibleRows();
+            setVisibleRows(rows);
+        }
+    }, [activeSheet?.filters, activeSheet?.activeCell]);
     const handleChartRequest = (chartConfig, sourceSheetId, targetSheetId, parsedFile) => {
         if (!dataGridRef.current) return;
         
@@ -717,13 +775,26 @@ function applyFormatToCell(row, col, type, value, sheetData, cellFormats, dataMo
         const cellKey = `${row}-${col}`;
         return (activeSheet.cellFormats || {})[cellKey] || {};
     };
-
-    // Add this to expose the formatting function to parent
-    useImperativeHandle(ref, () => ({
-        handleFormatChange: (type, value) => {
-            handleFormatChange(type, value);
-        }
-    }));
+// In Dashboard.js
+// Add imperative handle method for filter updates
+useImperativeHandle(ref, () => ({
+    handleFormatChange: (type, value) => {
+      handleFormatChange(type, value);
+    },
+    // Add new method
+    updateFilters: (filters) => {
+      // Directly update visible rows based on new filters
+      if (dataGridRef.current) {
+        // Tell DataGrid to update its visible rows
+        dataGridRef.current.updateFilters(filters);
+        
+        // Update statistics immediately
+        setTimeout(() => {
+          handleVisibleRowsChange();
+        }, 0);
+      }
+    }
+  }));
 
     // Handle formula bar changes
     const handleFormulaChange = (value) => {
@@ -834,6 +905,11 @@ function applyFormatToCell(row, col, type, value, sheetData, cellFormats, dataMo
                         zoomLevel={zoomLevel}
                         cellFormats={activeSheet?.cellFormats || {}}
                         formulas={activeSheet?.formulas || {}}
+                        selectedColumn={selectedColumn}
+        onSelectedColumnChange={(column) => onToggleColumnFilter(column)}
+        filters={activeSheet?.filters || {}}
+        onApplyFilter={onApplyFilter}
+        onVisibleRowsChange={handleVisibleRowsChange}
                     />
                 </div>
                     
@@ -845,6 +921,12 @@ function applyFormatToCell(row, col, type, value, sheetData, cellFormats, dataMo
                         onAddSheet={onAddSheet}
                         onDeleteSheet={onDeleteSheet}
                         onRenameSheet={onRenameSheet}
+                    />
+                     <StatisticsPanel
+                        visibleRows={visibleRows}
+                        selectedRange={selectedRange}
+                        data={activeSheet?.data || []}
+                        filters={activeSheet?.filters || {}}
                     />
                 </div>
             </div>

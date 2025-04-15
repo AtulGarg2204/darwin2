@@ -24,9 +24,71 @@ function App() {
         ['', '', '', '']
       ],
       activeCell: { row: 0, col: 0 },
-      cellFormats: {} // Store cell formatting per sheet
+      cellFormats: {}, // Store cell formatting per sheet
+      filters: {} // Add this to store filters for each sheet
     }
   });
+  const [selectedColumn, setSelectedColumn] = useState(null);
+  const handleToggleColumnFilter = (columnIndex, clearAll = false) => {
+    if (clearAll) {
+      // Clear all filters
+      const updatedSheets = { ...sheets };
+      updatedSheets[activeSheetId].filters = {};
+      setSheets(updatedSheets);
+      return;
+    }
+  
+    // Toggle or show filter for selected column
+    setSelectedColumn(columnIndex);
+    
+    // The actual filtering will be handled by the DataGrid component
+    // This just signals that the filter dropdown should be shown
+  }
+  
+// In App.js
+// Update the handleApplyFilter function
+const handleApplyFilter = (columnIndex, selectedValues) => {
+  if (columnIndex === null && selectedValues === true) {
+    // Special case: clear all filters
+    const updatedSheets = { ...sheets };
+    if (updatedSheets[activeSheetId]) {
+      updatedSheets[activeSheetId].filters = {};
+      setSheets(updatedSheets);
+      pushState(updatedSheets);
+      
+      // Directly notify DataGrid about filter change
+      if (dashboardRef.current && dashboardRef.current.updateFilters) {
+        dashboardRef.current.updateFilters({});
+      }
+    }
+    return;
+  }
+  
+  const updatedSheets = { ...sheets };
+  const currentSheet = updatedSheets[activeSheetId];
+  
+  if (!currentSheet) return; // Safety check
+  
+  if (!currentSheet.filters) {
+    currentSheet.filters = {};
+  }
+  
+  if (selectedValues && selectedValues.length > 0) {
+    // Apply new filter
+    currentSheet.filters[columnIndex] = { values: selectedValues };
+  } else {
+    // Remove filter for this column
+    delete currentSheet.filters[columnIndex];
+  }
+  
+  setSheets(updatedSheets);
+  pushState(updatedSheets); // Add to history
+  
+  // Directly notify DataGrid about filter change
+  if (dashboardRef.current && dashboardRef.current.updateFilters) {
+    dashboardRef.current.updateFilters(currentSheet.filters);
+  }
+};
   
   // Track the active sheet
   const [activeSheetId, setActiveSheetId] = useState('sheet1');
@@ -398,6 +460,9 @@ const isSheetEmpty = (sheet) => {
             setShowGridLines={setShowGridLines}
             zoomLevel={zoomLevel}
             setZoomLevel={setZoomLevel}
+            selectedColumn={selectedColumn}
+  onToggleColumnFilter={handleToggleColumnFilter}
+  filters={sheets[activeSheetId]?.filters}
             onFormatChange={handleFormatChange}
             activeCell={sheets[activeSheetId]?.activeCell || { row: 0, col: 0 }}
   currentData={sheets[activeSheetId]?.data || []}
@@ -430,6 +495,9 @@ const isSheetEmpty = (sheet) => {
                       showHeaders={showHeaders}
                       showGridLines={showGridLines}
                       zoomLevel={zoomLevel}
+                      selectedColumn={selectedColumn}
+  onToggleColumnFilter={handleToggleColumnFilter}
+  onApplyFilter={handleApplyFilter}
                     />
                   </PrivateRoute>
                 } 

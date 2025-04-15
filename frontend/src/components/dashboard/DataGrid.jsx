@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-
+import ColumnFilterButton from './ColumnFilterButton';
+import ColumnFilterDropdown from './ColumnFilterDropdown';
 
 // Import our modularized components
 import FormulaEngine from './FormulaEngine';
@@ -23,7 +24,12 @@ const DataGrid = forwardRef(({
   showGridLines,
   zoomLevel,
   cellFormats,
-  formulas: externalFormulas
+  formulas: externalFormulas,
+  selectedColumn,
+  onSelectedColumnChange,
+  filters = {},
+  onApplyFilter,
+  onVisibleRowsChange
 }, ref) => {
   // State for grid
   const [headers, setHeaders] = useState(
@@ -55,7 +61,69 @@ const DataGrid = forwardRef(({
   
   // Authentication context
   const { token } = useAuth();
-
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [filterDropdownColumn, setFilterDropdownColumn] = useState(null);
+  
+  // Update useEffect to sync selectedColumn with props
+  useEffect(() => {
+    if (selectedColumn !== null && selectedColumn !== undefined) {
+      // Set selection to the entire column
+      setSelectionStart({ row: 0, col: selectedColumn });
+      setSelectionEnd({ row: data.length - 1, col: selectedColumn });
+    }
+  }, [selectedColumn, data.length]);
+  
+  const getVisibleRows = useCallback(() => {
+    if (!filters || Object.keys(filters).length === 0) {
+      return data.map((_, index) => index); // All rows
+    }
+    
+    // Apply filters to determine visible rows
+    return data.map((row, rowIndex) => {
+      // Check each column filter
+      for (const [colIndex, filter] of Object.entries(filters)) {
+        const colIdx = parseInt(colIndex);
+        const cellValue = row[colIdx];
+        
+        // Skip if cell is undefined
+        if (cellValue === undefined) continue;
+        
+        // Handle different cell value types
+        let valueToCheck;
+        if (typeof cellValue === 'object' && cellValue !== null && cellValue.value !== undefined) {
+          // For date objects or other complex cell values
+          valueToCheck = String(cellValue.value);
+        } else {
+          // For simple values
+          valueToCheck = String(cellValue);
+        }
+        
+        // If this value is not in the selected filter values, exclude the row
+        if (!filter.values.includes(valueToCheck)) {
+          return null;
+        }
+      }
+      
+      // Row passes all filters
+      return rowIndex;
+    }).filter(index => index !== null);
+  }, [data, filters]);
+  // Get visible rows
+  const visibleRows = getVisibleRows();
+  
+  // Handle column header click
+  const handleColumnHeaderClick = (colIndex) => {
+    if (onSelectedColumnChange) {
+      onSelectedColumnChange(selectedColumn === colIndex ? null : colIndex);
+    }
+  };
+  
+  // Handle filter button click
+  const handleFilterButtonClick = (e, colIndex) => {
+    e.stopPropagation(); // Don't trigger column selection
+    setFilterDropdownColumn(colIndex);
+    setShowFilterDropdown(true);
+  };
   // Initialize with minimum number of rows and columns
   useEffect(() => {
     GridCore.initializeGrid(data, setData);
@@ -703,29 +771,90 @@ const formatDate = (date) => {
   //   expandGrid: (addRows, addCols) => 
   //     expandGrid(addRows, addCols)
   // }));
-  useImperativeHandle(ref, () => ({
-    createChart: (type, startCell, chartConfig) => 
-      ChartManager.createChart(type, startCell, chartConfig, data, setData, chartSizes),
-    expandGrid: (addRows, addCols) => 
-      expandGrid(addRows, addCols),
-    getSelection: () => {
-      // Return the current selection state
-      if (selectionStart && selectionEnd) {
-        return {
-          start: selectionStart,
-          end: selectionEnd
-        };
-      }
-      return null;
-    },
-    handleFormatUpdate: (updatedFormats, newData) => {
-      // Handle format updates from context menu or elsewhere
-      console.log("Format update requested", { 
-        formatCount: Object.keys(updatedFormats).length,
-        dataChanged: newData !== data 
-      });
+ // Update DataGrid.js
+// Add to the imperative handle to expose visible rows and selection
+useImperativeHandle(ref, () => ({
+  createChart: (type, startCell, chartConfig) => 
+    ChartManager.createChart(type, startCell, chartConfig, data, setData, chartSizes),
+  expandGrid: (addRows, addCols) => 
+    expandGrid(addRows, addCols),
+  getSelection: () => {
+    // Return the current selection state
+    if (selectionStart && selectionEnd) {
+      return {
+        start: selectionStart,
+        end: selectionEnd
+      };
     }
-  }));
+    return { 
+      start: activeCell, 
+      end: activeCell 
+    };
+  },
+  getVisibleRows: () => getVisibleRows(),
+  handleFormatUpdate: (updatedFormats, newData) => {
+    // Handle format updates from context menu or elsewhere
+    console.log("Format update requested", { 
+      formatCount: Object.keys(updatedFormats).length,
+      dataChanged: newData !== data 
+    });
+  },
+   // Add new method
+   updateFilters: (newFilters) => {
+    // Update internal filter state if needed
+    if (JSON.stringify(filters) !== JSON.stringify(newFilters)) {
+      // If we have local filters state:
+      // setFilters(newFilters);
+      
+      // Force recalculation of visible rows
+      const updatedRows = getVisibleRows(newFilters);
+      // If we have local visibleRows state:
+      // setVisibleRows(updatedRows);
+      
+      // Notify parent component
+      if (onVisibleRowsChange) {
+        onVisibleRowsChange(updatedRows);
+      }
+    }
+  },
+  
+  // Helper function to calculate visible rows with given filters
+  calculateVisibleRows: (filtersToApply = filters) => {
+    if (!filtersToApply || Object.keys(filtersToApply).length === 0) {
+      return data.map((_, index) => index); // All rows
+    }
+    
+    // Apply filters to determine visible rows
+    return data.map((row, rowIndex) => {
+      // Check each column filter
+      for (const [colIndex, filter] of Object.entries(filtersToApply)) {
+        const colIdx = parseInt(colIndex);
+        const cellValue = row[colIdx];
+        
+        // Skip if cell is undefined
+        if (cellValue === undefined) continue;
+        
+        // Handle different cell value types
+        let valueToCheck;
+        if (typeof cellValue === 'object' && cellValue !== null && cellValue.value !== undefined) {
+          // For date objects or other complex cell values
+          valueToCheck = String(cellValue.value);
+        } else {
+          // For simple values
+          valueToCheck = String(cellValue);
+        }
+        
+        // If this value is not in the selected filter values, exclude the row
+        if (!filter.values.includes(valueToCheck)) {
+          return null;
+        }
+      }
+      
+      // Row passes all filters
+      return rowIndex;
+    }).filter(index => index !== null);
+  }
+}));
 
   // Grid styling with zoom level
   const gridStyle = {
@@ -784,91 +913,144 @@ const formatDate = (date) => {
       </div>
       
       <div 
-        className="flex-1 overflow-auto" 
-        ref={gridRef}
-        onScroll={handleScroll}
-      >
-        <div className="relative">
-          <table 
-            className="border-collapse table-fixed" 
-            style={{
-              ...gridStyle,
-              width: `${(visibleCols * CELL_WIDTH) + ROW_HEADER_WIDTH}px`
-            }}
-          >
-            {showHeaders && (
-              <thead>
-                <tr>
+      className="flex-1 overflow-auto" 
+      ref={gridRef}
+      onScroll={handleScroll}
+    >
+      <div className="relative">
+        <table 
+          className="border-collapse table-fixed" 
+          style={{
+            ...gridStyle,
+            width: `${(visibleCols * CELL_WIDTH) + ROW_HEADER_WIDTH}px`
+          }}
+        >
+          {showHeaders && (
+            <thead>
+              <tr>
+                <th 
+                  className="bg-gray-100 border border-gray-300 sticky top-0 left-0 z-20"
+                  style={{ 
+                    width: `${ROW_HEADER_WIDTH}px`,
+                    height: `${CELL_HEIGHT}px`
+                  }}
+                ></th>
+                {headers.map((header, index) => (
                   <th 
-                    className="bg-gray-100 border border-gray-300 sticky top-0 left-0 z-20"
+                    key={index} 
+                    className={`bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky top-0 z-10 select-none cursor-pointer hover:bg-gray-200 ${selectedColumn === index ? 'bg-blue-50' : ''}`}
+                    style={{ 
+                      width: `${CELL_WIDTH}px`,
+                      height: `${CELL_HEIGHT}px`,
+                      minWidth: `${CELL_WIDTH}px`,
+                      maxWidth: `${CELL_WIDTH}px`,
+                      position: 'relative'
+                    }}
+                    onClick={() => handleColumnHeaderClick(index)}
+                  >
+                    <div className="flex items-center justify-center">
+                      <span>{header}</span>
+                      {filters[index] && (
+                        <ColumnFilterButton 
+                          onClick={(e) => handleFilterButtonClick(e, index)}
+                          isFiltered={true}
+                        />
+                      )}
+                      {selectedColumn === index && !filters[index] && (
+                        <ColumnFilterButton 
+                          onClick={(e) => handleFilterButtonClick(e, index)}
+                          isFiltered={false}
+                        />
+                      )}
+                    </div>
+                    
+                    {showFilterDropdown && filterDropdownColumn === index && (
+                      <ColumnFilterDropdown
+                        columnIndex={index}
+                        columnLabel={header}
+                        data={data}
+                        onApplyFilter={onApplyFilter}
+                        onCancel={() => setShowFilterDropdown(false)}
+                        existingFilter={filters[index]}
+                      />
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          )}
+          <tbody>
+            {visibleRows.map(rowIndex => (
+              <tr key={rowIndex}>
+                {showHeaders && (
+                  <td 
+                    className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky left-0 z-10"
                     style={{ 
                       width: `${ROW_HEADER_WIDTH}px`,
-                      height: `${CELL_HEIGHT}px`
+                      height: `${CELL_HEIGHT}px`,
+                      minHeight: `${CELL_HEIGHT}px`
                     }}
-                  ></th>
-                  {headers.map((header, index) => (
-                    <th 
-                      key={index} 
-                      className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky top-0 z-10 overflow-hidden text-ellipsis whitespace-nowrap"
-                      style={{ 
-                        width: `${CELL_WIDTH}px`,
-                        height: `${CELL_HEIGHT}px`,
-                        minWidth: `${CELL_WIDTH}px`,
-                        maxWidth: `${CELL_WIDTH}px`
-                      }}
-                    >
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
+                  >
+                    {rowIndex + 1}
+                  </td>
+                )}
+                {headers.map((_, colIndex) => 
+                  GridCore.renderCellContent(
+                    rowIndex, 
+                    colIndex, 
+                    data[rowIndex], 
+                    activeCell, 
+                    onCellClick,
+                    handleMouseDown, 
+                    handleMouseMove, 
+                    handleMouseUp,
+                    (ri, ci) => GridCore.isCellSelected(ri, ci, selectionStart, selectionEnd),
+                    showGridLines, 
+                    formulas, 
+                    handleCellChange,
+                    (val, ri, ci) => GridCore.formatCellValue(val, ri, ci, cellFormats),
+                    (ri, ci) => GridCore.getCellStyle(ri, ci, cellFormats),
+                    (type, startCell, chartConfig, chartSizes, selectedChart, handleResizeStart) => 
+                      ChartManager.renderChart(
+                        type, 
+                        startCell, 
+                        chartConfig, 
+                        chartSizes, 
+                        selectedChart, 
+                        handleResizeStart,
+                        handleChartDragStart
+                      ),
+                    data,
+                    chartSizes,
+                    selectedChart,
+                    handleResizeStart,
+                    handleChartDrop
+                  )
+                )}
+              </tr>
+            ))}
+            
+            {/* Show a message when there are no visible rows due to filtering */}
+            {visibleRows.length === 0 && (
+              <tr>
+                <td 
+                  colSpan={headers.length + (showHeaders ? 1 : 0)} 
+                  className="text-center py-8 text-gray-500 bg-gray-50"
+                >
+                  No data matches your filter criteria. 
+                  <button 
+                    className="ml-2 text-blue-600 hover:underline"
+                    onClick={() => onApplyFilter && onApplyFilter(null, true)}
+                  >
+                    Clear all filters
+                  </button>
+                </td>
+              </tr>
             )}
-            <tbody>
-              {data.map((row, rowIndex) => (
-                <tr key={rowIndex}>
-                  {showHeaders && (
-                    <td 
-                      className="bg-gray-100 border border-gray-300 text-center text-xs font-normal text-gray-500 sticky left-0 z-10"
-                      style={{ 
-                        width: `${ROW_HEADER_WIDTH}px`,
-                        height: `${CELL_HEIGHT}px`,
-                        minHeight: `${CELL_HEIGHT}px`
-                      }}
-                    >
-                      {rowIndex + 1}
-                    </td>
-                  )}
-                  {headers.map((_, colIndex) => 
-  GridCore.renderCellContent(
-    rowIndex, colIndex, row, activeCell, onCellClick,
-    handleMouseDown, handleMouseMove, handleMouseUp,
-    (ri, ci) => GridCore.isCellSelected(ri, ci, selectionStart, selectionEnd),
-    showGridLines, formulas, handleCellChange,
-    (val, ri, ci) => GridCore.formatCellValue(val, ri, ci, cellFormats),
-    (ri, ci) => GridCore.getCellStyle(ri, ci, cellFormats),
-    (type, startCell, chartConfig, chartSizes, selectedChart, handleResizeStart) => 
-      ChartManager.renderChart(
-        type, 
-        startCell, 
-        chartConfig, 
-        chartSizes, 
-        selectedChart, 
-        handleResizeStart, 
-        handleChartDragStart
-      ),
-    data,
-    chartSizes,
-    selectedChart,
-    handleResizeStart,
-    handleChartDrop
-  )
-)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
       </div>
+    </div>
       
       {/* Floating action buttons */}
       <div className="absolute bottom-8 right-8 flex space-x-2">
