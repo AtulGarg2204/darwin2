@@ -286,62 +286,134 @@ class StatisticalAgent:
 
         Create a comprehensive statistical analysis package including visualization with these components:
 
-        1. analysis_type: The main type of statistical analysis needed (e.g., 'descriptive', 'correlation', 'hypothesis_testing', 'regression', 'time_series')
+        1. analysis_type: The main type of statistical analysis needed (e.g., 'descriptive', 'correlation', 'hypothesis_testing', 'regression', 'time_series', 'comparative')
         
         2. analysis_plan: A detailed description of what you'll analyze and how you'll approach it
         
         3. implementation: Python code that performs the analysis using pandas, numpy, scipy, etc.
-           - Handle missing values, outliers, and other data issues
-           - Create a dictionary called 'analysis_result' with all findings
-           - Include comprehensive error handling
-           - IMPORTANT: When working with date/datetime columns:
-              - Don't use them directly in aggregation functions (sum, mean, etc.)
-              - For time-based analysis, use the derived columns (e.g., Date_year, Date_month) that are automatically created
-              - Use appropriate datetime methods like df['Date'].dt.month when needed
-           - IMPORTANT: For safety, use the provided safe_groupby_agg function for any groupby operations:
-              safe_groupby_agg(df, ['groupby_column'], {{'value_column': 'mean'}})
-           - DO NOT include markdown formatting (```python) in your code
+        - Handle missing values, outliers, and other data issues
+        - Create a dictionary called 'analysis_result' with ALL findings
+        - Include comprehensive error handling
+        - IMPORTANT: When working with date/datetime columns:
+            - Don't use them directly in aggregation functions (sum, mean, etc.)
+            - For time-based analysis, use the derived columns (e.g., Date_year, Date_month) that are automatically created
+            - Use appropriate datetime methods like df['Date'].dt.month when needed
+        - IMPORTANT: For safety, use the provided safe_groupby_agg function for any groupby operations:
+            safe_groupby_agg(df, ['groupby_column'], {{'value_column': 'mean'}})
+        - IMPORTANT: When the user asks for "best" or "worst" statistics, ALWAYS include:
+            - The complete dataset with all values (e.g., all regions, all products, etc.)
+            - The top/bottom N items (at least 3-5) with their values
+            - Overall statistics (mean, median, etc.) for comparison
+            - Context for why these are considered "best" or "worst"
+        - CRITICAL: ALWAYS provide comprehensive result sets, not just single data points
+        - DO NOT include markdown formatting (```python) in your code
         
-        4. interpretation_guide: Guidelines on how to interpret the results
+        4. interpretation_guide: Guidelines on how to interpret the results, including:
+        - How to understand comparative metrics (what makes a value "good" or "bad")
+        - How to interpret trends, patterns, or anomalies
+        - Key relationships to look for in the data
+        - Potential business or practical implications
 
-        Here's an example implementation for calculating profit margin by region:
+        Here's an example implementation for a comprehensive analysis of sales performance:
         
         # Ensure numeric columns
         df['Revenue'] = pd.to_numeric(df['Revenue'], errors='coerce')
         df['Profit'] = pd.to_numeric(df['Profit'], errors='coerce')
+        df['Units'] = pd.to_numeric(df['Units'], errors='coerce')
         
-        # Calculate profit margin by region
+        # Calculate key metrics by region
         region_performance = safe_groupby_agg(df, ['Region'], {{
             'Revenue': 'sum',
-            'Profit': 'sum'
+            'Profit': 'sum',
+            'Units': 'sum'
         }})
         
+        # Calculate key metrics by product
+        product_performance = safe_groupby_agg(df, ['Product'], {{
+            'Revenue': 'sum',
+            'Profit': 'sum',
+            'Units': 'sum'
+        }})
+        
+        # Initialize the result dictionary
+        analysis_result = {{
+            'summary_statistics': {{}},
+            'regional_analysis': None,
+            'product_analysis': None,
+            'top_performers': {{}},
+            'bottom_performers': {{}},
+            'overall_metrics': {{}}
+        }}
+        
+        # Process region performance data
         if region_performance is not None:
             # Calculate profit margin
             region_performance['Profit_Margin'] = (region_performance['Profit'] / region_performance['Revenue'] * 100).round(2)
+            region_performance['Revenue_per_Unit'] = (region_performance['Revenue'] / region_performance['Units']).round(2)
             
             # Sort by profit margin
-            region_performance = region_performance.sort_values('Profit_Margin', ascending=False)
+            region_by_margin = region_performance.sort_values('Profit_Margin', ascending=False)
             
-            # Get highest profit margin region
-            highest_margin_region = region_performance.iloc[0]['Region']
-            highest_margin_value = region_performance.iloc[0]['Profit_Margin']
+            # Get top and bottom regions by margin
+            top_margin_regions = region_by_margin.head(3).to_dict('records')
+            bottom_margin_regions = region_by_margin.tail(3).to_dict('records')
             
-            # Prepare data for visualization
-            chart_data = region_performance.to_dict('records')
+            # Store in result
+            analysis_result['regional_analysis'] = region_performance.to_dict('records')
+            analysis_result['top_performers']['by_profit_margin'] = top_margin_regions
+            analysis_result['bottom_performers']['by_profit_margin'] = bottom_margin_regions
             
-            analysis_result = {{
-                'profit_margin_by_region': chart_data,
-                'highest_margin_region': highest_margin_region,
-                'highest_margin_value': highest_margin_value
-            }}
-        else:
-            analysis_result = {{'profit_margin_by_region': None}}
+            # Calculate overall metrics
+            analysis_result['overall_metrics']['avg_profit_margin'] = region_performance['Profit_Margin'].mean()
+            analysis_result['overall_metrics']['total_revenue'] = region_performance['Revenue'].sum()
+            analysis_result['overall_metrics']['total_profit'] = region_performance['Profit'].sum()
+            
+            # Add highest and lowest values for quick reference
+            analysis_result['top_performers']['highest_margin_region'] = top_margin_regions[0]['Region']
+            analysis_result['top_performers']['highest_margin_value'] = top_margin_regions[0]['Profit_Margin']
+            analysis_result['bottom_performers']['lowest_margin_region'] = bottom_margin_regions[0]['Region']
+            analysis_result['bottom_performers']['lowest_margin_value'] = bottom_margin_regions[0]['Profit_Margin']
+        
+        # Process product performance data
+        if product_performance is not None:
+            # Calculate metrics
+            product_performance['Profit_per_Unit'] = (product_performance['Profit'] / product_performance['Units']).round(2)
+            
+            # Sort by profit per unit
+            product_by_profit = product_performance.sort_values('Profit_per_Unit', ascending=False)
+            
+            # Get top and bottom products
+            top_profit_products = product_by_profit.head(3).to_dict('records')
+            bottom_profit_products = product_by_profit.tail(3).to_dict('records')
+            
+            # Store in result
+            analysis_result['product_analysis'] = product_performance.to_dict('records')
+            analysis_result['top_performers']['by_profit_per_unit'] = top_profit_products
+            analysis_result['bottom_performers']['by_profit_per_unit'] = bottom_profit_products
+        
+        # Add basic statistics for numeric columns
+        numeric_columns = ['Revenue', 'Profit', 'Units']
+        for col in numeric_columns:
+            if col in df.columns:
+                analysis_result['summary_statistics'][col] = {{
+                    'mean': df[col].mean(),
+                    'median': df[col].median(),
+                    'std': df[col].std(),
+                    'min': df[col].min(),
+                    'max': df[col].max(),
+                    'q1': df[col].quantile(0.25),
+                    'q3': df[col].quantile(0.75)
+                }}
 
         IMPORTANT SAFETY CHECKS:
             - ALWAYS check if a function return value is None before using it
             - Especially for safe_groupby_agg function which may return None
             - Example: result = safe_groupby_agg(...); if result is not None: # then use result
+            - Always provide complete result sets, not just single values
+            - Include both summary metrics AND detailed records for complete analysis
+            - When asked for "best" or "worst", include BOTH the extreme values AND the full dataset
+
+        REMEMBER: The data is already loaded as a DataFrame named 'df'. DO NOT attempt to load or create a new DataFrame.
 
         Return your response as a JSON object, with the implementation code as a plain string without any markdown formatting characters.
         """
@@ -382,15 +454,11 @@ class StatisticalAgent:
             
             return analysis_package
         except json.JSONDecodeError:
-            # Handle invalid JSON response
+            # Handle invalid JSON response (this is a basic error handler, not a fallback)
             print("Error: OpenAI returned invalid JSON")
-            # Create a basic fallback package
             return {
-                "analysis_type": "descriptive",
-                "analysis_plan": "Basic descriptive analysis of the dataset",
-                "implementation": "analysis_result = df.describe().to_dict()",
-                "visualizations": [],
-                "interpretation_guide": "Review the basic statistics to understand the data distribution."
+                "analysis_type": "error",
+                "error": "Failed to parse API response"
             }
     
     def _execute_analysis(self, implementation_code: str, df: pd.DataFrame) -> Dict[str, Any]:
@@ -493,11 +561,13 @@ class StatisticalAgent:
                 return str(obj)
     
     async def _generate_visualizations(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
-                                    source_sheet_id: str, target_sheet_id: str) -> List[Dict[str, Any]]:
+                                    source_sheet_id: str, target_sheet_id: str, original_request:str) -> List[Dict[str, Any]]:
         """Generate visualizations based on analysis results."""
         # Create visualization prompt
         prompt = f"""
         You are a data visualization expert. Based on the following analysis results, create appropriate visualizations.
+
+        Original USER REQUEST: "{original_request}"
 
         ANALYSIS RESULTS:
         ```json
@@ -523,6 +593,14 @@ class StatisticalAgent:
 
         The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
         Include any necessary aggregations, sorting, filtering, or calculations.
+        
+        IMPORTANT: In your dataTransformationCode, you should directly access the df variable, NOT 'data'.
+        
+        For example:
+        - CORRECT: "result_df = pd.DataFrame(df['sub_category_distribution']).sort_values(by='Total_Sales', ascending=False)"
+        - INCORRECT: "result_df = pd.DataFrame(data['sub_category_distribution'])"
+        
+        Make sure ALL your dataTransformationCode uses 'df' as the variable name and NOT 'data'.
         """
 
         # Get visualization recommendations from OpenAI
@@ -689,15 +767,15 @@ class StatisticalAgent:
             analysis_package = await self._create_statistical_analysis(request.message, df, data_profile)
             
             # Execute the analysis code
-            print("CODE GENERATED:")
-            print(analysis_package["implementation"])
+            print("CODE GENERATED:\n</>\n")
+            print(analysis_package["implementation"]+"\n")
             analysis_result = self._execute_analysis(analysis_package["implementation"], df)
 
             print("ANALYSIS RESULT:")
-            print(json.dumps(analysis_result, indent=2))
+            print(json.dumps(analysis_result, indent=2)+"\n")
             
             # Generate visualizations
-            chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id)
+            chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
             
             # Generate interpretation
             interpretation = await self._generate_interpretation(
