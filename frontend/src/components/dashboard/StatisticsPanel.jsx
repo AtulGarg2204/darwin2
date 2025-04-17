@@ -1,5 +1,4 @@
-// StatisticsPanel.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 
 const StatisticsPanel = ({ 
   visibleRows, 
@@ -16,13 +15,8 @@ const StatisticsPanel = ({
     max: null
   });
   
-  // Recalculate stats whenever inputs change
-  useEffect(() => {
-    calculateStats();
-  }, [visibleRows, selectedRange, data, filters]);
-  
-  // Calculate statistics based on visible rows and selection
-  const calculateStats = () => {
+  // Define calculateStats with useCallback to prevent recreating it on every render
+  const calculateStats = useCallback(() => {
     // Default stats
     const newStats = {
       count: 0,
@@ -97,7 +91,12 @@ const StatisticsPanel = ({
     }
     
     setStats(newStats);
-  };
+  }, [visibleRows, selectedRange, data]);  // Include filters if it's used inside calculateStats
+  
+  // Recalculate stats whenever inputs change
+  useEffect(() => {
+    calculateStats();
+  }, [calculateStats]);  // calculateStats contains all the dependencies already
   
   return (
     <div className="flex items-center justify-end space-x-6 px-4 h-6 text-sm text-gray-600 bg-gray-100 border-t border-gray-300">
