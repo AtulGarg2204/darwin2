@@ -1,5 +1,5 @@
 
-import { useState, useRef,useEffect } from 'react';
+import { useState, useRef,useEffect,useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Login from './components/auth/Login';
@@ -14,6 +14,7 @@ import * as XLSX from 'xlsx';
 
 function App() {
   const [chartClipboard, setChartClipboard] = useState(null);
+  
   const [sheets, setSheets] = useState({
     sheet1: {
       id: 'sheet1',
@@ -28,6 +29,10 @@ function App() {
       filters: {} // Add this to store filters for each sheet
     }
   });
+  // Update history hook to work with sheets object
+  const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(sheets);
+  // Track the active sheet
+  const [activeSheetId, setActiveSheetId] = useState('sheet1');
   const [selectedColumn, setSelectedColumn] = useState(null);
   const handleToggleColumnFilter = (columnIndex, clearAll = false) => {
     if (clearAll) {
@@ -45,7 +50,7 @@ function App() {
     // This just signals that the filter dropdown should be shown
   }
  // Update this function in App.js to fix chart cut/copy/paste
-const handleChartClipboard = (action, chartConfig, sourceSheetId, chartPosition) => {
+ const handleChartClipboard = useCallback((action, chartConfig, sourceSheetId, chartPosition) => {
   if (action === 'copy' || action === 'cut') {
     // Store chart configuration in our separate clipboard state with additional metadata
     console.log(`Storing chart in clipboard: ${action} operation`, {
@@ -148,7 +153,7 @@ const handleChartClipboard = (action, chartConfig, sourceSheetId, chartPosition)
   }
   
   return false; // Operation not handled
-};
+}, [sheets, activeSheetId, chartClipboard, setChartClipboard, pushState]);
 
 // In Dashboard.js or App.js - Make sure filter application works correctly
 const handleApplyFilter = (columnIndex, selectedValues) => {
@@ -185,16 +190,14 @@ const handleApplyFilter = (columnIndex, selectedValues) => {
   }
 };
   
-  // Track the active sheet
-  const [activeSheetId, setActiveSheetId] = useState('sheet1');
+  
   
   // View settings remain the same
   const [showHeaders, setShowHeaders] = useState(true);
   const [showGridLines, setShowGridLines] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
 
-  // Update history hook to work with sheets object
-  const { pushState, undo, redo, canUndo, canRedo } = useSpreadsheetHistory(sheets);
+  
 
   const dashboardRef = useRef(null);
 
@@ -228,7 +231,7 @@ useEffect(() => {
   return () => {
     document.removeEventListener('chartClipboardOperation', handleChartClipboardEvent);
   };
-}, [activeSheetId, handleChartClipboard]);
+}, [activeSheetId,handleChartClipboard]);
 
 // Also make sure to update activeSheetId whenever it changes
 useEffect(() => {
