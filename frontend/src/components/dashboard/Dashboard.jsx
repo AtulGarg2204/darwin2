@@ -20,7 +20,8 @@ const Dashboard = forwardRef(({
     zoomLevel,
     selectedColumn,
   onToggleColumnFilter,
-  onApplyFilter
+  onApplyFilter,
+  onChartClipboard
 }, ref) => {
     const dataGridRef = useRef();
     
@@ -910,6 +911,8 @@ useImperativeHandle(ref, () => ({
         filters={activeSheet?.filters || {}}
         onApplyFilter={onApplyFilter}
         onVisibleRowsChange={handleVisibleRowsChange}
+        onChartClipboard={onChartClipboard}
+        activeSheetId={activeSheetId}
                     />
                 </div>
                     

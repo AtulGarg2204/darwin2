@@ -14,8 +14,10 @@ const ColumnFilterDropdown = ({
   const getUniqueValues = () => {
     const uniqueValues = new Set();
     
-    data.forEach(row => {
-      if (row[columnIndex] !== undefined && row[columnIndex] !== '') {
+    // Skip first row (headers) when collecting unique values
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row && row[columnIndex] !== undefined && row[columnIndex] !== '') {
         let value = row[columnIndex];
         // Handle complex cell objects (for dates)
         if (value && typeof value === 'object' && value.value !== undefined) {
@@ -23,7 +25,7 @@ const ColumnFilterDropdown = ({
         }
         uniqueValues.add(String(value));
       }
-    });
+    }
     
     return Array.from(uniqueValues).sort();
   };

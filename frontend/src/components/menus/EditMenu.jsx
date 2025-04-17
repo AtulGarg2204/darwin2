@@ -28,12 +28,41 @@ useEffect(() => {
 const handleCut = useCallback(() => {
     console.log('Cut triggered from menu');
     
-    // If no selection, use active cell
+    // If no active cell, cannot cut
     if (!activeCell) {
-        console.log('No active cell, cannot cut');
-        return;
+      console.log('No active cell, cannot cut');
+      return;
     }
     
+    // Check if the active cell contains a chart
+    const cellValue = currentData[activeCell.row]?.[activeCell.col];
+    if (typeof cellValue === 'string' && cellValue.startsWith('CHART:') && cellValue.includes(':START')) {
+      console.log('Chart detected at active cell, handling chart cut operation');
+      
+      // Get the chart config from the cell
+      try {
+        const configStr = cellValue.split(':').slice(1, -1).join(':');
+        const chartConfig = JSON.parse(configStr);
+        
+        // Dispatch a custom event for chart clipboard operation
+        const chartEvent = new CustomEvent('chartClipboardOperation', {
+          detail: {
+            action: 'cut',
+            chartConfig,
+            sourceSheetId: window.activeSheetId, // Need to have this accessible
+            chartPosition: activeCell
+          }
+        });
+        document.dispatchEvent(chartEvent);
+        
+        return; // Stop here - chart operation handled
+      } catch (err) {
+        console.error('Error parsing chart config for cut:', err);
+        // Fall back to normal cell cut if chart parsing fails
+      }
+    }
+    
+    // If not a chart or chart parsing failed, proceed with regular cell cut
     // Create a temporary event to pass to DataGrid's cut handler
     const tempEvent = new Event('cut');
     tempEvent.preventDefault = () => {};
@@ -44,32 +73,60 @@ const handleCut = useCallback(() => {
     
     // Set to clipboard
     navigator.clipboard.writeText(value).catch(err => {
-        console.error('Failed to write to clipboard:', err);
+      console.error('Failed to write to clipboard:', err);
     });
     
     // Clear the cell
     const newData = [...currentData];
     if (!newData[activeCell.row]) {
-        newData[activeCell.row] = [];
+      newData[activeCell.row] = [];
     }
     newData[activeCell.row][activeCell.col] = '';
     setCurrentData(newData);
     
     // Dispatch a custom event that DataGrid might be listening for
     document.dispatchEvent(new CustomEvent('clipboardOperation', { 
-        detail: { type: 'cut', cell: activeCell } 
+      detail: { type: 'cut', cell: activeCell } 
     }));
-    
-}, [activeCell, currentData, setCurrentData]);
-
-const handleCopy = useCallback(() => {
+  }, [activeCell, currentData, setCurrentData]);
+  
+  const handleCopy = useCallback(() => {
     console.log('Copy triggered from menu');
     
     if (!activeCell) {
-        console.log('No active cell, cannot copy');
-        return;
+      console.log('No active cell, cannot copy');
+      return;
     }
     
+    // Check if the active cell contains a chart
+    const cellValue = currentData[activeCell.row]?.[activeCell.col];
+    if (typeof cellValue === 'string' && cellValue.startsWith('CHART:') && cellValue.includes(':START')) {
+      console.log('Chart detected at active cell, handling chart copy operation');
+      
+      // Get the chart config from the cell
+      try {
+        const configStr = cellValue.split(':').slice(1, -1).join(':');
+        const chartConfig = JSON.parse(configStr);
+        
+        // Dispatch a custom event for chart clipboard operation
+        const chartEvent = new CustomEvent('chartClipboardOperation', {
+          detail: {
+            action: 'copy',
+            chartConfig,
+            sourceSheetId: window.activeSheetId, // Need to have this accessible
+            chartPosition: activeCell
+          }
+        });
+        document.dispatchEvent(chartEvent);
+        
+        return; // Stop here - chart operation handled
+      } catch (err) {
+        console.error('Error parsing chart config for copy:', err);
+        // Fall back to normal cell copy if chart parsing fails
+      }
+    }
+    
+    // If not a chart or chart parsing failed, proceed with regular cell copy
     // Get the value to copy
     const value = currentData[activeCell.row]?.[activeCell.col] || '';
     console.log(`Copying value: "${value}" from cell [${activeCell.row},${activeCell.col}]`);
@@ -79,54 +136,73 @@ const handleCopy = useCallback(() => {
     
     // Copy to system clipboard
     navigator.clipboard.writeText(value).catch(err => {
-        console.error('Failed to write to clipboard:', err);
+      console.error('Failed to write to clipboard:', err);
     });
     
     // Dispatch a custom event that DataGrid might be listening for
     document.dispatchEvent(new CustomEvent('clipboardOperation', { 
-        detail: { type: 'copy', cell: activeCell } 
+      detail: { type: 'copy', cell: activeCell } 
     }));
-    
-}, [activeCell, currentData]);
-
-const handlePaste = useCallback(() => {
+  }, [activeCell, currentData]);
+  
+  const handlePaste = useCallback(() => {
     console.log('Paste triggered from menu');
     
     if (!activeCell) {
-        console.log('No active cell, cannot paste');
-        return;
+      console.log('No active cell, cannot paste');
+      return;
     }
     
+    // First check if we need to handle chart paste
+    // Dispatch a custom event for chart paste attempt
+    const chartPasteEvent = new CustomEvent('chartClipboardOperation', {
+      detail: {
+        action: 'paste',
+        targetCell: activeCell
+      }
+    });
+    
+    // Set a flag to check if chart paste was handled
+    window.chartPasteHandled = false;
+    document.dispatchEvent(chartPasteEvent);
+    
+    // If chart paste was handled, don't proceed with regular paste
+    if (window.chartPasteHandled) {
+      console.log('Chart paste was handled by chart handler');
+      return;
+    }
+    
+    // If no chart paste or it wasn't handled, proceed with regular cell paste
     // First try to get clipboard data from the system clipboard
     navigator.clipboard.readText()
-        .then(text => {
-            console.log(`Read from clipboard: "${text.substring(0, 20)}..."`);
-            // Update the cell with clipboard content
-            const newData = [...currentData];
-            if (!newData[activeCell.row]) {
-                newData[activeCell.row] = [];
-            }
-            newData[activeCell.row][activeCell.col] = text;
-            setCurrentData(newData);
-            
-            // Dispatch a custom event that DataGrid might be listening for
-            document.dispatchEvent(new CustomEvent('clipboardOperation', { 
-                detail: { type: 'paste', cell: activeCell, data: text } 
-            }));
-        })
-        .catch(err => {
-            console.error('Failed to read from clipboard:', err);
-            // Fall back to internal clipboard
-            if (clipboard !== null) {
-                const newData = [...currentData];
-                if (!newData[activeCell.row]) {
-                    newData[activeCell.row] = [];
-                }
-                newData[activeCell.row][activeCell.col] = clipboard;
-                setCurrentData(newData);
-            }
-        });
-}, [activeCell, clipboard, currentData, setCurrentData]);
+      .then(text => {
+        console.log(`Read from clipboard: "${text.substring(0, 20)}..."`);
+        // Update the cell with clipboard content
+        const newData = [...currentData];
+        if (!newData[activeCell.row]) {
+          newData[activeCell.row] = [];
+        }
+        newData[activeCell.row][activeCell.col] = text;
+        setCurrentData(newData);
+        
+        // Dispatch a custom event that DataGrid might be listening for
+        document.dispatchEvent(new CustomEvent('clipboardOperation', { 
+          detail: { type: 'paste', cell: activeCell, data: text } 
+        }));
+      })
+      .catch(err => {
+        console.error('Failed to read from clipboard:', err);
+        // Fall back to internal clipboard
+        if (clipboard !== null) {
+          const newData = [...currentData];
+          if (!newData[activeCell.row]) {
+            newData[activeCell.row] = [];
+          }
+          newData[activeCell.row][activeCell.col] = clipboard;
+          setCurrentData(newData);
+        }
+      });
+  }, [activeCell, clipboard, currentData, setCurrentData]);
 
 const handlePasteValuesOnly = useCallback(() => {
     // For simple implementation, just call the regular paste

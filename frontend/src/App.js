@@ -1,5 +1,5 @@
 
-import { useState, useRef } from 'react';
+import { useState, useRef,useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
 import Login from './components/auth/Login';
@@ -13,7 +13,7 @@ import './App.css';
 import * as XLSX from 'xlsx';
 
 function App() {
-  // Replace single sheet data with multiple sheets structure
+  const [chartClipboard, setChartClipboard] = useState(null);
   const [sheets, setSheets] = useState({
     sheet1: {
       id: 'sheet1',
@@ -44,49 +44,144 @@ function App() {
     // The actual filtering will be handled by the DataGrid component
     // This just signals that the filter dropdown should be shown
   }
-  
-// In App.js
-// Update the handleApplyFilter function
-const handleApplyFilter = (columnIndex, selectedValues) => {
-  if (columnIndex === null && selectedValues === true) {
-    // Special case: clear all filters
-    const updatedSheets = { ...sheets };
-    if (updatedSheets[activeSheetId]) {
-      updatedSheets[activeSheetId].filters = {};
-      setSheets(updatedSheets);
-      pushState(updatedSheets);
-      
-      // Directly notify DataGrid about filter change
-      if (dashboardRef.current && dashboardRef.current.updateFilters) {
-        dashboardRef.current.updateFilters({});
+ // Update this function in App.js to fix chart cut/copy/paste
+const handleChartClipboard = (action, chartConfig, sourceSheetId, chartPosition) => {
+  if (action === 'copy' || action === 'cut') {
+    // Store chart configuration in our separate clipboard state with additional metadata
+    console.log(`Storing chart in clipboard: ${action} operation`, {
+      config: chartConfig,
+      position: chartPosition
+    });
+    
+    setChartClipboard({
+      config: JSON.parse(JSON.stringify(chartConfig)), // Deep copy to ensure no reference issues
+      sourceSheetId,
+      position: chartPosition,
+      action: action // Store which action was performed
+    });
+    
+    // For cut operation, remove the chart from source
+    if (action === 'cut') {
+      const updatedSheets = { ...sheets };
+      const sheet = updatedSheets[sourceSheetId];
+      if (sheet) {
+        const newData = [...sheet.data];
+        const chartSize = chartConfig.size || { width: 5, height: 15 };
+        
+        // Clear the chart cells
+        for (let i = 0; i < chartSize.height; i++) {
+          for (let j = 0; j < chartSize.width; j++) {
+            if (newData[chartPosition.row + i] && 
+                newData[chartPosition.row + i][chartPosition.col + j]) {
+              newData[chartPosition.row + i][chartPosition.col + j] = '';
+            }
+          }
+        }
+        
+        updatedSheets[sourceSheetId].data = newData;
+        setSheets(updatedSheets);
+        pushState(updatedSheets);
       }
     }
-    return;
+    
+    return true; // Indicate the operation was handled
+  } else if (action === 'paste') {
+    // Only proceed if we have chart data in clipboard
+    if (!chartClipboard || !chartClipboard.config) {
+      console.log("No chart data in clipboard for paste operation");
+      return false;
+    }
+    
+    console.log("Pasting chart from clipboard:", chartClipboard);
+    
+    // Paste chart to active sheet
+    const targetSheetId = activeSheetId;
+    const targetSheet = sheets[targetSheetId];
+    if (!targetSheet) return false;
+    
+    const targetCell = targetSheet.activeCell || { row: 0, col: 0 };
+    
+    // Create a deep copy of the chart configuration to ensure no reference issues
+    const chartConfigCopy = JSON.parse(JSON.stringify(chartClipboard.config));
+    
+    // Update sheets
+    const updatedSheets = { ...sheets };
+    const newData = [...targetSheet.data];
+    const chartSize = chartConfigCopy.size || { width: 5, height: 15 };
+    
+    // Ensure we have enough space for the chart
+    while (newData.length <= targetCell.row + chartSize.height) {
+      newData.push([]);
+    }
+    
+    // Create the chart in the target location
+    for (let i = 0; i < chartSize.height; i++) {
+      for (let j = 0; j < chartSize.width; j++) {
+        if (!newData[targetCell.row + i]) {
+          newData[targetCell.row + i] = [];
+        }
+        
+        while (newData[targetCell.row + i].length <= targetCell.col + j) {
+          newData[targetCell.row + i].push('');
+        }
+        
+        if (i === 0 && j === 0) {
+          // First cell gets the chart config
+          newData[targetCell.row][targetCell.col] = `CHART:${JSON.stringify(chartConfigCopy)}:START`;
+        } else {
+          // Mark remaining cells as occupied
+          newData[targetCell.row + i][targetCell.col + j] = 'CHART:OCCUPIED';
+        }
+      }
+    }
+    
+    updatedSheets[targetSheetId].data = newData;
+    setSheets(updatedSheets);
+    pushState(updatedSheets);
+    
+    // For cut operations, clear the clipboard after pasting to prevent duplications
+    if (chartClipboard.action === 'cut') {
+      setChartClipboard(null);
+    }
+    
+    return true; // Return true to indicate paste was handled
   }
   
-  const updatedSheets = { ...sheets };
-  const currentSheet = updatedSheets[activeSheetId];
-  
-  if (!currentSheet) return; // Safety check
-  
-  if (!currentSheet.filters) {
-    currentSheet.filters = {};
-  }
-  
+  return false; // Operation not handled
+};
+
+// In Dashboard.js or App.js - Make sure filter application works correctly
+const handleApplyFilter = (columnIndex, selectedValues) => {
   if (selectedValues && selectedValues.length > 0) {
     // Apply new filter
+    const updatedSheets = { ...sheets };
+    const currentSheet = updatedSheets[activeSheetId];
+    
+    if (!currentSheet.filters) {
+      currentSheet.filters = {};
+    }
+    
     currentSheet.filters[columnIndex] = { values: selectedValues };
+    setSheets(updatedSheets);
+    
+    // If you have a DataGrid ref, update it
+    if (dashboardRef.current && dashboardRef.current.updateFilters) {
+      dashboardRef.current.updateFilters(currentSheet.filters);
+    }
   } else {
     // Remove filter for this column
-    delete currentSheet.filters[columnIndex];
-  }
-  
-  setSheets(updatedSheets);
-  pushState(updatedSheets); // Add to history
-  
-  // Directly notify DataGrid about filter change
-  if (dashboardRef.current && dashboardRef.current.updateFilters) {
-    dashboardRef.current.updateFilters(currentSheet.filters);
+    const updatedSheets = { ...sheets };
+    const currentSheet = updatedSheets[activeSheetId];
+    
+    if (currentSheet.filters) {
+      delete currentSheet.filters[columnIndex];
+      setSheets(updatedSheets);
+      
+      // If you have a DataGrid ref, update it
+      if (dashboardRef.current && dashboardRef.current.updateFilters) {
+        dashboardRef.current.updateFilters(currentSheet.filters);
+      }
+    }
   }
 };
   
@@ -109,7 +204,36 @@ const handleApplyFilter = (columnIndex, selectedValues) => {
     pushState(newSheets);
   };
 
+// Add this useEffect to App.js to listen for chart clipboard events
+useEffect(() => {
+  const handleChartClipboardEvent = (e) => {
+    const { action, chartConfig, sourceSheetId, chartPosition } = e.detail;
+    
+    console.log(`Chart clipboard event received: ${action}`, e.detail);
+    
+    // Call the chart clipboard handler
+    if (action === 'cut' || action === 'copy') {
+      handleChartClipboard(action, chartConfig, sourceSheetId, chartPosition);
+    } else if (action === 'paste') {
+      // For paste, indicate if the operation was handled
+      window.chartPasteHandled = handleChartClipboard('paste');
+    }
+  };
+  
+  document.addEventListener('chartClipboardOperation', handleChartClipboardEvent);
+  
+  // Make activeSheetId available to EditMenu for chart operations
+  window.activeSheetId = activeSheetId;
+  
+  return () => {
+    document.removeEventListener('chartClipboardOperation', handleChartClipboardEvent);
+  };
+}, [activeSheetId, handleChartClipboard]);
 
+// Also make sure to update activeSheetId whenever it changes
+useEffect(() => {
+  window.activeSheetId = activeSheetId;
+}, [activeSheetId]);
   // Update active cell in current sheet
   const setActiveCell = (cell) => {
     const updatedSheets = { ...sheets };
@@ -350,7 +474,23 @@ const findFirstEmptySheet = (sheets) => {
   }
   return null; // No empty sheet found
 };
-
+useEffect(() => {
+  const handleRegularClipboardOperation = (e) => {
+    const { type } = e.detail;
+    
+    // If this is a regular copy or cut operation, clear the chart clipboard
+    if (type === 'copy' || type === 'cut') {
+      console.log('Regular cell operation detected, clearing chart clipboard');
+      setChartClipboard(null);
+    }
+  };
+  
+  document.addEventListener('clipboardOperation', handleRegularClipboardOperation);
+  
+  return () => {
+    document.removeEventListener('clipboardOperation', handleRegularClipboardOperation);
+  };
+}, []);
 // Helper function to check if a sheet is empty
 const isSheetEmpty = (sheet) => {
   if (!sheet || !sheet.data) return true;
@@ -498,6 +638,7 @@ const isSheetEmpty = (sheet) => {
                       selectedColumn={selectedColumn}
   onToggleColumnFilter={handleToggleColumnFilter}
   onApplyFilter={handleApplyFilter}
+  onChartClipboard={handleChartClipboard} // Add this prop
                     />
                   </PrivateRoute>
                 } 

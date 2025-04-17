@@ -29,7 +29,9 @@ const DataGrid = forwardRef(({
   onSelectedColumnChange,
   filters = {},
   onApplyFilter,
-  onVisibleRowsChange
+  onVisibleRowsChange,
+  onChartClipboard,
+  activeSheetId
 }, ref) => {
   // State for grid
   const [headers, setHeaders] = useState(
@@ -73,41 +75,54 @@ const DataGrid = forwardRef(({
     }
   }, [selectedColumn, data.length]);
   
-  const getVisibleRows = useCallback(() => {
-    if (!filters || Object.keys(filters).length === 0) {
-      return data.map((_, index) => index); // All rows
-    }
+// DataGrid.js - Fix getVisibleRows to keep header and apply filters correctly
+const getVisibleRows = useCallback(() => {
+  // If no filters, return all rows
+  if (!filters || Object.keys(filters).length === 0) {
+    return data.map((_, index) => index);
+  }
+  
+  // Always include header row (row 0)
+  const visibleRows = [0];
+  
+  // Apply filters to data rows (starting from row 1)
+  for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
+    const row = data[rowIndex];
+    let includeRow = true;
     
-    // Apply filters to determine visible rows
-    return data.map((row, rowIndex) => {
-      // Check each column filter
-      for (const [colIndex, filter] of Object.entries(filters)) {
-        const colIdx = parseInt(colIndex);
-        const cellValue = row[colIdx];
-        
-        // Skip if cell is undefined
-        if (cellValue === undefined) continue;
-        
-        // Handle different cell value types
-        let valueToCheck;
-        if (typeof cellValue === 'object' && cellValue !== null && cellValue.value !== undefined) {
-          // For date objects or other complex cell values
-          valueToCheck = String(cellValue.value);
-        } else {
-          // For simple values
-          valueToCheck = String(cellValue);
-        }
-        
-        // If this value is not in the selected filter values, exclude the row
-        if (!filter.values.includes(valueToCheck)) {
-          return null;
-        }
+    // Check each column filter
+    for (const [colIndex, filter] of Object.entries(filters)) {
+      const colIdx = parseInt(colIndex);
+      const cellValue = row[colIdx];
+      
+      // Skip if cell is undefined
+      if (cellValue === undefined) continue;
+      
+      // Handle different cell value types
+      let valueToCheck;
+      if (typeof cellValue === 'object' && cellValue !== null && cellValue.value !== undefined) {
+        // For date objects or other complex cell values
+        valueToCheck = String(cellValue.value);
+      } else {
+        // For simple values
+        valueToCheck = String(cellValue);
       }
       
-      // Row passes all filters
-      return rowIndex;
-    }).filter(index => index !== null);
-  }, [data, filters]);
+      // If this value is not in the selected filter values, exclude the row
+      if (!filter.values.includes(valueToCheck)) {
+        includeRow = false;
+        break;
+      }
+    }
+    
+    // Row passes all filters, include it
+    if (includeRow) {
+      visibleRows.push(rowIndex);
+    }
+  }
+  
+  return visibleRows;
+}, [data, filters]);
   // Get visible rows
   const visibleRows = getVisibleRows();
   
@@ -596,32 +611,49 @@ const formatDate = (date) => {
     setIsSelecting(false);
   };
 
-  // Create stable callback functions for clipboard operations
-  const handleCopyCallback = useCallback((e) => {
-    e.preventDefault();
-    
-    const copyText = ClipboardHandler.handleCopy(data, selectionStart, selectionEnd, activeCell);
+  // Updated clipboard functions in DataGrid.js to dispatch events
 
-    navigator.clipboard.writeText(copyText).catch(err => {
-      console.error('Failed to copy:', err);
-      // Fallback
-      e.clipboardData.setData('text/plain', copyText);
-    });
-  }, [data, selectionStart, selectionEnd, activeCell]);
-
-  const handleCutCallback = useCallback((e) => {
-    e.preventDefault();
+const handleCopyCallback = useCallback((e) => {
+  e.preventDefault();
   
-    const { newData, copyText } = ClipboardHandler.handleCut(data, selectionStart, selectionEnd, activeCell);
-    
-    navigator.clipboard.writeText(copyText).catch(err => {
-      console.error('Failed to copy:', err);
-      // Fallback
-      e.clipboardData.setData('text/plain', copyText);
-    });
-    
-    setData(newData);
-  }, [data, selectionStart, selectionEnd, activeCell, setData]);
+  // If this is a regular cell copy (not a chart), clear any chart clipboard data
+  if (!selectedChart) {
+    // Dispatch a custom event to notify that a regular copy operation happened
+    document.dispatchEvent(new CustomEvent('clipboardOperation', { 
+      detail: { type: 'copy', cell: activeCell } 
+    }));
+  }
+  
+  const copyText = ClipboardHandler.handleCopy(data, selectionStart, selectionEnd, activeCell);
+
+  navigator.clipboard.writeText(copyText).catch(err => {
+    console.error('Failed to copy:', err);
+    // Fallback
+    e.clipboardData.setData('text/plain', copyText);
+  });
+}, [data, selectionStart, selectionEnd, activeCell, selectedChart]);
+
+const handleCutCallback = useCallback((e) => {
+  e.preventDefault();
+
+  // If this is a regular cell cut (not a chart), clear any chart clipboard data
+  if (!selectedChart) {
+    // Dispatch a custom event to notify that a regular cut operation happened
+    document.dispatchEvent(new CustomEvent('clipboardOperation', { 
+      detail: { type: 'cut', cell: activeCell } 
+    }));
+  }
+  
+  const { newData, copyText } = ClipboardHandler.handleCut(data, selectionStart, selectionEnd, activeCell);
+  
+  navigator.clipboard.writeText(copyText).catch(err => {
+    console.error('Failed to copy:', err);
+    // Fallback
+    e.clipboardData.setData('text/plain', copyText);
+  });
+  
+  setData(newData);
+}, [data, selectionStart, selectionEnd, activeCell, setData, selectedChart]);
 
   const handlePasteCallback = useCallback(async (e) => {
     e.preventDefault();
@@ -666,6 +698,68 @@ const formatDate = (date) => {
       if (!activeCell) return;
       
       if (e.ctrlKey || e.metaKey) {
+        // For chart operations
+        if (selectedChart) {
+          switch (e.key.toLowerCase()) {
+            case 'c':
+              e.preventDefault();
+             
+              const copyChartConfig = ChartManager.getChartConfig(
+                selectedChart.row, 
+                selectedChart.col, 
+                data
+              );
+              if (copyChartConfig && onChartClipboard) {
+                onChartClipboard('copy', copyChartConfig, activeSheetId, selectedChart);
+                
+                // Visual feedback
+                const chartElement = document.querySelector(
+                  `[data-row="${selectedChart.row}"][data-col="${selectedChart.col}"] .chart-container`
+                );
+                if (chartElement) {
+                  chartElement.classList.add('copied-chart');
+                  setTimeout(() => {
+                    chartElement.classList.remove('copied-chart');
+                  }, 200);
+                }
+                return; // Stop here - chart operation handled
+              }
+              break;
+            case 'x':
+              e.preventDefault();
+              // Cut selected chart
+              const cutChartConfig = ChartManager.getChartConfig(
+                selectedChart.row, 
+                selectedChart.col, 
+                data
+              );
+              if (cutChartConfig && onChartClipboard) {
+                onChartClipboard('cut', cutChartConfig, activeSheetId, selectedChart);
+                setSelectedChart(null);
+                return; // Stop here - chart operation handled
+              }
+              break;
+              default:
+               break;
+          }
+        }
+        
+        // For paste operation, try chart paste first, fall back to data paste
+        if (e.key.toLowerCase() === 'v') {
+          e.preventDefault();
+          
+          // Try to paste chart first
+          if (onChartClipboard && onChartClipboard('paste')) {
+            // If chart paste was handled (true returned), stop here
+            return;
+          }
+          
+          // Otherwise, proceed with regular paste
+          handlePasteCallback(e);
+          return;
+        }
+        
+        // For regular copy/cut operations on data (not charts)
         switch (e.key.toLowerCase()) {
           case 'c':
             handleCopyCallback(e);
@@ -673,15 +767,11 @@ const formatDate = (date) => {
           case 'x':
             handleCutCallback(e);
             break;
-          case 'v':
-            handlePasteCallback(e);
-            break;
           default:
             break;
         }
       }
     };
-
     const handleGlobalPaste = (e) => {
       if (document.activeElement.closest('.DataGrid')) {
         handlePasteCallback(e);
@@ -695,7 +785,14 @@ const formatDate = (date) => {
       window.removeEventListener('keydown', handleKeyboardEvent);
       window.removeEventListener('paste', handleGlobalPaste);
     };
-  }, [activeCell, handleCopyCallback, handleCutCallback, handlePasteCallback]);
+  }, [activeCell, 
+    handleCopyCallback, 
+    handleCutCallback, 
+    handlePasteCallback,
+    selectedChart,
+    onChartClipboard,
+    activeSheetId,
+    data]);
 
   // Add keyboard navigation with expansion capability
   useEffect(() => {
