@@ -1,3 +1,4 @@
+// Updated parts of Navbar.js
 import { Link } from 'react-router-dom';
 import { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
@@ -5,9 +6,34 @@ import EditMenu from '../menus/EditMenu';
 import ViewMenu from '../menus/ViewMenu';
 import InsertMenu from '../menus/InsertMenu';
 import FormatMenu from '../menus/FormatMenu';
+import DataTypeMenu from '../menus/DataTypeMenu';
+// Import new filter menu
+import FilterMenu from '../menus/FilterMenu';
 
-const Navbar = ({ sheets, 
-    activeSheetId, currentData, setCurrentData, activeCell, undoHistory, redoHistory, canUndo, canRedo, onNewFile, onDataLoad, showHeaders, setShowHeaders, showGridLines, setShowGridLines, zoomLevel, setZoomLevel, onFormatChange }) => {
+const Navbar = ({ 
+    sheets, 
+    activeSheetId, 
+    currentData, 
+    setCurrentData, 
+    activeCell, 
+    undoHistory, 
+    redoHistory, 
+    canUndo, 
+    canRedo, 
+    onNewFile, 
+    onDataLoad, 
+    showHeaders, 
+    setShowHeaders, 
+    showGridLines, 
+    setShowGridLines, 
+    zoomLevel, 
+    setZoomLevel, 
+    onFormatChange,
+    // New props for column filtering
+    selectedColumn,
+    onToggleColumnFilter,
+    filters
+}) => {
     
     const [showFileMenu, setShowFileMenu] = useState(false);
     const fileInputRef = useRef(null);
@@ -167,30 +193,27 @@ const handleSaveAs = () => {
     }
 };
 
-    // Edit menu handlers
-    // const handleUndo = () => {
-    //     // Implement undo functionality
-    //     console.log('Undo');
-    // };
+    // Handler for column selection from DataTypeMenu
+    const handleSelectColumn = (columnIndex) => {
+        if (!sheets || !activeSheetId || !sheets[activeSheetId]) return;
+        
+        const activeSheet = sheets[activeSheetId];
+        const sheetData = activeSheet.data;
+        
+        // Create a selection for the entire column (excluding header)
+        const selectionStart = { row: 1, col: columnIndex }; // Start from row 1 (after header)
+        const selectionEnd = { row: sheetData.length - 1, col: columnIndex };
+        
+        // Using custom event to trigger column selection in DataGrid
+        const selectColumnEvent = new CustomEvent('selectColumn', {
+            detail: { start: selectionStart, end: selectionEnd }
+        });
+        
+        document.dispatchEvent(selectColumnEvent);
+        
+        console.log(`Selected column ${columnIndex} from headers`);
+    };
 
-    // const handleRedo = () => {
-    //     // Implement redo functionality
-    //     console.log('Redo');
-    // };
-
-    // const handleCut = () => {
-    //     document.execCommand('cut');
-    // };
-
-    // const handleCopy = () => {
-    //     document.execCommand('copy');
-    // };
-
-    // const handlePaste = () => {
-    //     document.execCommand('paste');
-    // };
-
-    // Dashboard navbar with full menu
     return (
         <div className="flex flex-col">
             <nav className="bg-white border-b border-gray-200">
@@ -273,6 +296,23 @@ const handleSaveAs = () => {
 
                             {/* Format Menu */}
                             <FormatMenu onFormatChange={onFormatChange} />
+                            
+                            {/* NEW - Filter Menu */}
+                            <FilterMenu 
+                                selectedColumn={selectedColumn}
+                                onToggleColumnFilter={onToggleColumnFilter}
+                                hasFilters={filters && Object.keys(filters).length > 0}
+                                sheets={sheets}
+                                activeSheetId={activeSheetId}
+                            />
+                            
+                            {/* Data Type Menu */}
+                            <DataTypeMenu 
+                                currentData={currentData}
+                                activeSheetId={activeSheetId}
+                                sheets={sheets}
+                                onSelectColumn={handleSelectColumn}
+                            />
 
                             {/* Other menu items */}
                             <button className="flex items-center text-sm text-gray-700 hover:bg-gray-100 px-3 py-1 rounded">
@@ -297,4 +337,4 @@ const handleSaveAs = () => {
     );
 };
 
-export default Navbar; 
+export default Navbar;
