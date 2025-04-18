@@ -10,7 +10,7 @@ from together import Together
 class DataTransformationAgent:
     def __init__(self):
         """Initialize the DataTransformationAgent with the OpenAI client."""
-        if os.getenv("USE_TOGETHER"):
+        if os.getenv("MODEL") == "TOGETHER":
             try:
                 api_key = os.getenv("TOGETHER_API_KEY")
                 # export together api key to environment variable

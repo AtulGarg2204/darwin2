@@ -19,7 +19,7 @@ except ImportError:
 class StatisticalAgent:
     def __init__(self):
         """Initialize the EnhancedStatisticalAgent with the OpenAI client."""
-        if os.getenv("USE_TOGETHER"):
+        if os.getenv("MODEL") == "TOGETHER":
             try:
                 api_key = os.getenv("TOGETHER_API_KEY")
                 # export together api key to environment variable
@@ -391,6 +391,18 @@ class StatisticalAgent:
             analysis_result['top_performers']['by_profit_per_unit'] = top_profit_products
             analysis_result['bottom_performers']['by_profit_per_unit'] = bottom_profit_products
         
+        # Process region-product performance data
+        if region_product_performance is not None:
+            analysis_result['regional_product_analysis'] = region_product_performance.to_dict('records')
+            
+            # Get top products per region
+            for region in df['Region'].unique():
+                # Filter the grouped data for the current region using regular column access
+                region_data = region_product_performance[region_product_performance['Region'] == region]
+                region_data = region_data.sort_values('Profit', ascending=False)
+                top_products = region_data.head(3)
+                analysis_result['top_products_per_region'][region] = top_products[['Product', 'Revenue', 'Profit', 'Units']].to_dict('records')
+
         # Add basic statistics for numeric columns
         numeric_columns = ['Revenue', 'Profit', 'Units']
         for col in numeric_columns:
