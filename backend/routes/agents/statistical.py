@@ -705,6 +705,202 @@ class StatisticalAgent:
 
         return chart_configs
     
+    async def _generate_tables(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
+                                source_sheet_id: str, target_sheet_id: str, original_request: str) -> List[Dict[str, Any]]:
+        """Generate tabular data representations based on analysis results.
+        
+        This function creates structured tables from analysis results to provide clear,
+        organized views of the data that complement visualizations.
+        
+        Args:
+            analysis_result: Dictionary containing the results of statistical analysis
+            df: The original DataFrame used in the analysis
+            source_sheet_id: ID of the sheet containing source data
+            target_sheet_id: ID of the sheet where tables will be displayed
+            original_request: The user's original query text
+            
+        Returns:
+            List of table configurations including data transformations and presentation settings
+        """
+        # Create table generation prompt
+        prompt = f"""
+        You are a data presentation expert. Based on the following analysis results, create appropriate tabular presentations.
+
+        Original USER REQUEST: "{original_request}"
+
+        ANALYSIS RESULTS:
+        ```json
+        {json.dumps(analysis_result, default=str, indent=2)}
+        ```
+
+        DATAFRAME INFO:
+        - Columns: {df.columns.tolist()}
+        - Sample data: {df.head().to_dict()}
+
+        Create a JSON array of table configurations. Each configuration should have:
+        {{
+            "title": "Table title",
+            "description": "Brief description of what this table shows",
+            "dataTransformationCode": "Python code to transform data for tabular presentation",
+            "columns": ["List of column names to include"],
+            "sortBy": "Column to sort by (optional)",
+            "sortDirection": "asc or desc (optional)",
+            "format": {{
+                "numberFormat": "options: 'currency', 'percent', 'number', or custom format string",
+                "highlightConditions": [
+                    {{
+                        "column": "column_name",
+                        "condition": "condition_type (greater_than, less_than, equals, top_n, bottom_n)",
+                        "value": "threshold value",
+                        "style": "highlight_style (positive, negative, neutral)"
+                    }}
+                ]
+            }}
+        }}
+
+        The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
+        Include any necessary aggregations, sorting, filtering, or calculations to present the most relevant insights.
+        
+        IMPORTANT GUIDELINES:
+        1. Create tables that answer the user's query directly
+        2. Prioritize presenting actionable insights rather than raw data
+        3. For each key finding in the analysis, create a focused table (e.g., "Top Performers", "Trend Summary")
+        4. Limit tables to relevant columns only (5-7 columns maximum for readability)
+        5. Include summary rows where appropriate (totals, averages)
+        6. Format numbers appropriately (currency, percentages, etc.)
+        7. In your dataTransformationCode, directly access the df variable or analysis_result keys, NOT 'data'
+        8. Tables should complement the visualizations, not duplicate them
+        9. Each table should tell a specific part of the overall data story
+        
+        For example transformation code:
+        ```python
+        # For a summary table of key metrics by region
+        if 'regional_analysis' in analysis_result:
+            region_data = pd.DataFrame(analysis_result['regional_analysis'])
+            # Select only the most important columns
+            result_df = region_data[['Region', 'Revenue', 'Profit', 'Units', 'Profit_Margin']]
+            # Sort by highest profit margin
+            result_df = result_df.sort_values('Profit_Margin', ascending=False)
+            # Add a summary row with totals/averages
+            summary_row = pd.DataFrame({
+                'Region': ['Total/Average'],
+                'Revenue': [result_df['Revenue'].sum()],
+                'Profit': [result_df['Profit'].sum()],
+                'Units': [result_df['Units'].sum()],
+                'Profit_Margin': [result_df['Profit_Margin'].mean()]
+            })
+            result_df = pd.concat([result_df, summary_row], ignore_index=True)
+        else:
+            # Create a summary of key statistics from the original data
+            result_df = pd.DataFrame({
+                'Metric': ['Total Revenue', 'Average Order Value', 'Total Units', 'Profit Margin'],
+                'Value': [
+                    df['Revenue'].sum(),
+                    df['Revenue'].sum() / len(df) if len(df) > 0 else 0,
+                    df['Units'].sum(),
+                    df['Profit'].sum() / df['Revenue'].sum() * 100 if df['Revenue'].sum() > 0 else 0
+                ]
+            })
+        ```
+        
+        Use your data expertise to identify what tables would best summarize the analysis results and provide actionable insights to the user.
+        """
+
+        # Get table recommendations from OpenAI
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a data presentation API. Return only valid JSON with no comments, no markdown, and no explanation."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.2,
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+
+        print("TABLE CONFIGS:")
+        print(response.choices[0].message.content)
+
+        # Parse the table configurations
+        table_configs_response = json.loads(response.choices[0].message.content)
+        table_configs = table_configs_response.get("tables", [])
+        if not isinstance(table_configs, list):
+            table_configs = [table_configs]
+
+        # Process each table configuration
+        processed_tables = []
+        for table_config in table_configs:
+            try:
+                # Execute the data transformation code
+                local_scope = {
+                    "df": df, 
+                    "pd": pd, 
+                    "np": np, 
+                    "analysis_result": analysis_result
+                }
+                
+                # Execute the data transformation code
+                exec(table_config["dataTransformationCode"], local_scope)
+                result_df = local_scope.get("result_df")
+
+                if result_df is None or result_df.empty:
+                    print(f"Warning: Empty result DataFrame for table '{table_config['title']}'")
+                    continue
+
+                # Convert result to serializable format (records)
+                table_data = []
+                for _, row in result_df.iterrows():
+                    # Convert each cell to an appropriate type for JSON serialization
+                    row_dict = {}
+                    for col in result_df.columns:
+                        cell_value = row[col]
+                        if isinstance(cell_value, (np.int64, np.float64)):
+                            row_dict[col] = float(cell_value)
+                        elif pd.isna(cell_value):
+                            row_dict[col] = None
+                        else:
+                            row_dict[col] = str(cell_value)
+                    table_data.append(row_dict)
+
+                # Get column types for formatting
+                column_types = {}
+                for col in result_df.columns:
+                    if pd.api.types.is_numeric_dtype(result_df[col]):
+                        if col.lower() in ['profit_margin', 'margin', 'percentage', 'rate', 'ratio'] or '%' in col:
+                            column_types[col] = "percent"
+                        elif col.lower() in ['revenue', 'sales', 'profit', 'cost', 'price', 'income', 'expense']:
+                            column_types[col] = "currency"
+                        else:
+                            column_types[col] = "number"
+                    else:
+                        column_types[col] = "string"
+
+                # Create table configuration
+                processed_table = {
+                    "title": table_config["title"],
+                    "description": table_config.get("description", ""),
+                    "data": table_data,
+                    "columns": result_df.columns.tolist(),
+                    "columnTypes": column_types,
+                    "format": table_config.get("format", {}),
+                    "sourceSheetId": source_sheet_id,
+                    "targetSheetId": target_sheet_id
+                }
+                
+                # Add optional sort information if provided
+                if "sortBy" in table_config and table_config["sortBy"] in result_df.columns:
+                    processed_table["sortBy"] = table_config["sortBy"]
+                    processed_table["sortDirection"] = table_config.get("sortDirection", "desc")
+                    
+                processed_tables.append(processed_table)
+
+            except Exception as e:
+                print(f"Error generating table for {table_config.get('title', 'unknown')}: {str(e)}")
+                traceback.print_exc()
+                continue
+
+        return processed_tables
+        
     async def _generate_interpretation(self, user_message: str, analysis_type: str, 
                                    analysis_result: Dict[str, Any], 
                                    interpretation_guide: str) -> str:
@@ -789,6 +985,9 @@ class StatisticalAgent:
             # Generate visualizations
             chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
             
+            # Generate tables
+            table_configs = await self._generate_tables(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
+            
             # Generate interpretation
             interpretation = await self._generate_interpretation(
                 request.message,
@@ -802,6 +1001,7 @@ class StatisticalAgent:
                 "text": interpretation,
                 "analysisType": analysis_package.get("analysis_type", "Statistical Analysis"),
                 "chartConfig": chart_configs,
+                "tableConfig": table_configs,  # Add the table configs to the response
                 "sourceSheetId": primary_sheet_id,
                 "targetSheetId": target_sheet_id,
                 "operation": "statistical",
@@ -809,7 +1009,8 @@ class StatisticalAgent:
                     "rows_analyzed": len(df),
                     "columns_analyzed": len(df.columns),
                     "analysis_type": analysis_package.get("analysis_type"),
-                    "visualization_count": len(chart_configs)
+                    "visualization_count": len(chart_configs),
+                    "table_count": len(table_configs)  # Add count of tables generated
                 }
             }
             
