@@ -573,57 +573,111 @@ class StatisticalAgent:
                 return str(obj)
     
     async def _generate_visualizations(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
-                                    source_sheet_id: str, target_sheet_id: str, original_request:str) -> List[Dict[str, Any]]:
+                                source_sheet_id: str, target_sheet_id: str, original_request:str) -> List[Dict[str, Any]]:
         """Generate visualizations based on analysis results."""
-        # Create visualization prompt
+        
+        # Get a sample of the dataframe and column types to provide better context
+        df_sample = df.head(3).to_dict('records')
+        column_types = {col: str(df[col].dtype) for col in df.columns}
+        
+        # Create visualization prompt with more detailed guidance
+        # Note: All curly braces in code examples are doubled to escape them in f-strings
         prompt = f"""
-        You are a data visualization expert. Based on the following analysis results, create appropriate visualizations.
+        You are a data visualization expert. I need you to create visualization configurations based on this dataset.
 
-        Original USER REQUEST: "{original_request}"
+        USER REQUEST: "{original_request}"
 
+        DATASET INFORMATION:
+        - Columns and types: {column_types}
+        - Sample rows: {df_sample}
+        - Total rows: {len(df)}
+        
         ANALYSIS RESULTS:
         ```json
         {json.dumps(analysis_result, default=str, indent=2)}
         ```
 
-        DATAFRAME INFO:
-        - Columns: {df.columns.tolist()}
-        - Sample data: {df.head().to_dict()}
+        Create up to 3 visualization configurations that best answer the user's request.
+        Each visualization should focus on one clear insight.
 
-        Create a JSON array of visualization configurations. Each configuration should have:
+        Return a JSON object with a "visualizations" array containing visualization configs. Each config should have:
         {{
             "type": "chart type (bar, line, scatter, pie, heatmap)",
-            "title": "Chart title",
-            "xAxisColumn": "Column for x-axis",
-            "yAxisColumns": ["Columns for y-axis"],
-            "dataTransformationCode": "Python code to transform data for visualization",
+            "title": "Chart title that describes the insight",
+            "xAxisColumn": "Column name for x-axis",
+            "yAxisColumns": ["Column name(s) for y-axis values"],
+            "groupByColumn": "Column to group data by (usually categorical like 'Segment')",
+            "dataTransformationCode": "Python code block described below",
             "visualization": {{
-                "colors": ["#hex1", "#hex2"],
-                "stacked": true/false
+                "colors": ["#4e79a7", "#f28e2b", "#59a14f"],
+                "stacked": false
             }}
         }}
 
-        The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
-        Include any necessary aggregations, sorting, filtering, or calculations.
+        IMPORTANT RULES FOR dataTransformationCode:
+        1. Must produce a DataFrame called 'result_df' with AT LEAST these columns: 
+        - The column specified in xAxisColumn
+        - All columns specified in yAxisColumns
+        - The column specified in groupByColumn (if provided)
         
-        IMPORTANT: In your dataTransformationCode, you should directly access the df variable, NOT 'data'.
+        2. Write clean, multi-line Python code - NO semicolons to separate statements
         
-        For example:
-        - CORRECT: "result_df = pd.DataFrame(df['sub_category_distribution']).sort_values(by='Total_Sales', ascending=False)"
-        - INCORRECT: "result_df = pd.DataFrame(data['sub_category_distribution'])"
+        3. Use standard pandas operations:
+        - For aggregations: df.groupby('Category')['Value'].sum().reset_index()
+        - For filtering: df[df['Column'] > threshold]
+        - For sorting: df.sort_values('Column', ascending=False)
         
-        Make sure ALL your dataTransformationCode uses 'df' as the variable name and NOT 'data'.
+        4. Ensure all columns referenced in xAxisColumn, yAxisColumns, and groupByColumn exist in result_df
+        
+        5. Keep it simple - don't try to create complex nested structures
+        
+        6. ONLY use the provided dataframe 'df' - don't try to recreate or hardcode data
+
+        7. For segmented bar charts comparing groups, use this pattern:
+        ```python
+        # Get top 3 products by sales in each segment
+        segments = []
+        for segment in df['Segment'].unique():
+            segment_df = df[df['Segment'] == segment]
+            top_products = segment_df.groupby('Product')['Sales'].sum().reset_index()
+            top_products = top_products.sort_values('Sales', ascending=False).head(3)
+            top_products['Segment'] = segment
+            segments.append(top_products)
+        
+        result_df = pd.concat(segments, ignore_index=True)
+        # Now result_df has Product, Sales, and Segment columns
+        # Use Segment as groupByColumn to color bars by segment
+        ```
+        
+        8. For grouped bar charts (e.g., showing values by segment), use this pattern:
+        ```python
+        # Group by Category and Segment to show segment breakdown per category
+        result_df = df.groupby(['Category', 'Segment'])['Sales'].sum().reset_index()
+        result_df = result_df.sort_values(['Category', 'Sales'], ascending=[True, False])
+        # Use Category as xAxisColumn and Segment as groupByColumn
+        ```
+        
+        9. For scatter plots, BOTH xAxisColumn and yAxisColumns[0] must be numeric columns:
+        ```python
+        # For a scatter plot of Profit vs Sales
+        result_df = df.groupby('Customer_Name').agg({{
+            'Sales': 'sum',
+            'Profit': 'sum'
+        }}).reset_index()
+        # Use 'Sales' as xAxisColumn and ['Profit'] as yAxisColumns
+        ```
+
+        Provide visualizations that directly address the user's request with clear titles describing the insight shown.
         """
 
         # Get visualization recommendations from OpenAI
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "You are a data visualization API. Return only valid JSON with no comments, no markdown, and no explanation."},
+                {"role": "system", "content": "You are a data visualization API that returns only valid JSON with detailed, executable Python code."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
-            max_tokens=1000,
             response_format={"type": "json_object"}
         )
 
@@ -645,47 +699,125 @@ class StatisticalAgent:
                 result_df = local_scope.get("result_df")
 
                 if result_df is None:
+                    print(f"Warning: No result_df produced for visualization {viz_config['title']}")
+                    continue
+                    
+                # Check required columns exist
+                required_cols = [viz_config["xAxisColumn"]] + viz_config["yAxisColumns"]
+                if "groupByColumn" in viz_config and viz_config["groupByColumn"]:
+                    required_cols.append(viz_config["groupByColumn"])
+                    
+                missing_cols = [col for col in required_cols if col not in result_df.columns]
+                if missing_cols:
+                    print(f"Warning: Missing columns {missing_cols} in result_df for {viz_config['title']}")
                     continue
 
                 # Convert DataFrame to chart data format
                 chart_data = []
+                
+                # Handle different chart types with proper grouping
                 if viz_config["type"] in ["bar", "line", "area"]:
-                    for _, row in result_df.iterrows():
-                        data_point = {"name": str(row[viz_config["xAxisColumn"]])}
-                        for y_col in viz_config["yAxisColumns"]:
-                            if y_col in result_df.columns:
-                                data_point[y_col] = float(row[y_col])
-                        chart_data.append(data_point)
+                    # Get the groupByColumn if specified
+                    group_by_col = viz_config.get("groupByColumn")
+                    
+                    if group_by_col and group_by_col in result_df.columns:
+                        # Group data by the specified column
+                        for group_val in result_df[group_by_col].unique():
+                            group_data = result_df[result_df[group_by_col] == group_val]
+                            
+                            for _, row in group_data.iterrows():
+                                data_point = {
+                                    "name": str(row[viz_config["xAxisColumn"]]),
+                                    "group": str(group_val)  # Add group identifier
+                                }
+                                
+                                for y_col in viz_config["yAxisColumns"]:
+                                    try:
+                                        data_point[y_col] = float(row[y_col])
+                                    except (ValueError, TypeError):
+                                        data_point[y_col] = 0
+                                
+                                chart_data.append(data_point)
+                    else:
+                        # No grouping - standard bar/line chart
+                        for _, row in result_df.iterrows():
+                            data_point = {"name": str(row[viz_config["xAxisColumn"]])}
+                            
+                            for y_col in viz_config["yAxisColumns"]:
+                                try:
+                                    data_point[y_col] = float(row[y_col])
+                                except (ValueError, TypeError):
+                                    data_point[y_col] = 0
+                                    
+                            chart_data.append(data_point)
+                    
                 elif viz_config["type"] == "scatter":
-                    for _, row in result_df.iterrows():
-                        chart_data.append({
-                            "x": float(row[viz_config["xAxisColumn"]]),
-                            "y": float(row[viz_config["yAxisColumns"][0]]),
-                            "name": str(row[viz_config["xAxisColumn"]])
-                        })
+                    # For scatter plots, ensure both x and y are numeric
+                    if pd.api.types.is_numeric_dtype(result_df[viz_config["xAxisColumn"]]) and \
+                    pd.api.types.is_numeric_dtype(result_df[viz_config["yAxisColumns"][0]]):
+                        
+                        group_by_col = viz_config.get("groupByColumn")
+                        
+                        if group_by_col and group_by_col in result_df.columns:
+                            # Group scatter points
+                            for group_val in result_df[group_by_col].unique():
+                                group_data = result_df[result_df[group_by_col] == group_val]
+                                
+                                for _, row in group_data.iterrows():
+                                    chart_data.append({
+                                        "x": float(row[viz_config["xAxisColumn"]]),
+                                        "y": float(row[viz_config["yAxisColumns"][0]]),
+                                        "name": str(row.get("Customer_Name", f"Point {_}")),
+                                        "group": str(group_val)
+                                    })
+                        else:
+                            # No grouping
+                            for _, row in result_df.iterrows():
+                                chart_data.append({
+                                    "x": float(row[viz_config["xAxisColumn"]]),
+                                    "y": float(row[viz_config["yAxisColumns"][0]]),
+                                    "name": str(row.get("Customer_Name", f"Point {_}"))
+                                })
+                    else:
+                        print(f"Warning: Non-numeric columns used for scatter plot in {viz_config['title']}")
+                        continue
+                        
                 elif viz_config["type"] == "pie":
                     for _, row in result_df.iterrows():
-                        chart_data.append({
-                            "name": str(row[viz_config["xAxisColumn"]]),
-                            "value": float(row[viz_config["yAxisColumns"][0]])
-                        })
-                elif viz_config["type"] == "heatmap":
-                    # Create a pivot table for heatmap
-                    pivot = pd.pivot_table(
-                        result_df,
-                        values=viz_config["yAxisColumns"][0],
-                        index=viz_config["xAxisColumn"],
-                        columns=viz_config["yAxisColumns"][1],
-                        aggfunc='mean'
-                    ).fillna(0)
-
-                    for idx_val in pivot.index:
-                        for col_val in pivot.columns:
+                        try:
+                            value = float(row[viz_config["yAxisColumns"][0]])
                             chart_data.append({
-                                "x": str(idx_val),
-                                "y": str(col_val),
-                                "value": float(pivot.loc[idx_val, col_val])
+                                "name": str(row[viz_config["xAxisColumn"]]),
+                                "value": value
                             })
+                        except (ValueError, TypeError):
+                            continue
+                            
+                elif viz_config["type"] == "heatmap":
+                    try:
+                        # Create a pivot table for heatmap
+                        if len(viz_config["yAxisColumns"]) > 1:
+                            pivot = pd.pivot_table(
+                                result_df,
+                                values=viz_config["yAxisColumns"][0],
+                                index=viz_config["xAxisColumn"],
+                                columns=viz_config["yAxisColumns"][1],
+                                aggfunc='mean'
+                            ).fillna(0)
+
+                            for idx_val in pivot.index:
+                                for col_val in pivot.columns:
+                                    chart_data.append({
+                                        "x": str(idx_val),
+                                        "y": str(col_val),
+                                        "value": float(pivot.loc[idx_val, col_val])
+                                    })
+                        else:
+                            print(f"Warning: Not enough dimensions for heatmap in {viz_config['title']}")
+                            continue
+                    except Exception as e:
+                        print(f"Error creating heatmap data: {str(e)}")
+                        continue
 
                 if chart_data:
                     chart_config = {
@@ -697,10 +829,18 @@ class StatisticalAgent:
                         "sourceSheetId": source_sheet_id,
                         "targetSheetId": target_sheet_id
                     }
+                    
+                    # Add grouping information if available
+                    if "groupByColumn" in viz_config and viz_config["groupByColumn"]:
+                        chart_config["groupByColumn"] = viz_config["groupByColumn"]
+                        
                     chart_configs.append(chart_config)
+                else:
+                    print(f"Warning: No valid chart data generated for {viz_config['title']}")
 
             except Exception as e:
                 print(f"Error generating chart for {viz_config.get('title', 'unknown')}: {str(e)}")
+                traceback.print_exc()
                 continue
 
         return chart_configs
@@ -724,87 +864,87 @@ class StatisticalAgent:
         """
         # Create table generation prompt
         prompt = f"""
-        You are a data presentation expert. Based on the following analysis results, create appropriate tabular presentations.
+            You are a data presentation expert. Based on the following analysis results, create appropriate tabular presentations.
 
-        Original USER REQUEST: "{original_request}"
+            Original USER REQUEST: "{original_request}"
 
-        ANALYSIS RESULTS:
-        ```json
-        {json.dumps(analysis_result, default=str, indent=2)}
-        ```
+            ANALYSIS RESULTS:
+            ```json
+            {json.dumps(analysis_result, default=str, indent=2)}
+            ```
 
-        DATAFRAME INFO:
-        - Columns: {df.columns.tolist()}
-        - Sample data: {df.head().to_dict()}
+            DATAFRAME INFO:
+            - Columns: {df.columns.tolist()}
+            - Sample data: {df.head().to_dict()}
 
-        Create a JSON array of table configurations. Each configuration should have:
-        {{
-            "title": "Table title",
-            "description": "Brief description of what this table shows",
-            "dataTransformationCode": "Python code to transform data for tabular presentation",
-            "columns": ["List of column names to include"],
-            "sortBy": "Column to sort by (optional)",
-            "sortDirection": "asc or desc (optional)",
-            "format": {{
-                "numberFormat": "options: 'currency', 'percent', 'number', or custom format string",
-                "highlightConditions": [
-                    {{
-                        "column": "column_name",
-                        "condition": "condition_type (greater_than, less_than, equals, top_n, bottom_n)",
-                        "value": "threshold value",
-                        "style": "highlight_style (positive, negative, neutral)"
-                    }}
-                ]
+            Create a JSON array of table configurations. Each configuration should have:
+            {{
+                "title": "Table title",
+                "description": "Brief description of what this table shows",
+                "dataTransformationCode": "Python code to transform data for tabular presentation",
+                "columns": ["List of column names to include"],
+                "sortBy": "Column to sort by (optional)",
+                "sortDirection": "asc or desc (optional)",
+                "format": {{
+                    "numberFormat": "options: 'currency', 'percent', 'number', or custom format string",
+                    "highlightConditions": [
+                        {{
+                            "column": "column_name",
+                            "condition": "condition_type (greater_than, less_than, equals, top_n, bottom_n)",
+                            "value": "threshold value",
+                            "style": "highlight_style (positive, negative, neutral)"
+                        }}
+                    ]
+                }}
             }}
-        }}
 
-        The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
-        Include any necessary aggregations, sorting, filtering, or calculations to present the most relevant insights.
-        
-        IMPORTANT GUIDELINES:
-        1. Create tables that answer the user's query directly
-        2. Prioritize presenting actionable insights rather than raw data
-        3. For each key finding in the analysis, create a focused table (e.g., "Top Performers", "Trend Summary")
-        4. Limit tables to relevant columns only (5-7 columns maximum for readability)
-        5. Include summary rows where appropriate (totals, averages)
-        6. Format numbers appropriately (currency, percentages, etc.)
-        7. In your dataTransformationCode, directly access the df variable or analysis_result keys, NOT 'data'
-        8. Tables should complement the visualizations, not duplicate them
-        9. Each table should tell a specific part of the overall data story
-        
-        For example transformation code:
-        ```python
-        # For a summary table of key metrics by region
-        if 'regional_analysis' in analysis_result:
-            region_data = pd.DataFrame(analysis_result['regional_analysis'])
-            # Select only the most important columns
-            result_df = region_data[['Region', 'Revenue', 'Profit', 'Units', 'Profit_Margin']]
-            # Sort by highest profit margin
-            result_df = result_df.sort_values('Profit_Margin', ascending=False)
-            # Add a summary row with totals/averages
-            summary_row = pd.DataFrame({
-                'Region': ['Total/Average'],
-                'Revenue': [result_df['Revenue'].sum()],
-                'Profit': [result_df['Profit'].sum()],
-                'Units': [result_df['Units'].sum()],
-                'Profit_Margin': [result_df['Profit_Margin'].mean()]
-            })
-            result_df = pd.concat([result_df, summary_row], ignore_index=True)
-        else:
-            # Create a summary of key statistics from the original data
-            result_df = pd.DataFrame({
-                'Metric': ['Total Revenue', 'Average Order Value', 'Total Units', 'Profit Margin'],
-                'Value': [
-                    df['Revenue'].sum(),
-                    df['Revenue'].sum() / len(df) if len(df) > 0 else 0,
-                    df['Units'].sum(),
-                    df['Profit'].sum() / df['Revenue'].sum() * 100 if df['Revenue'].sum() > 0 else 0
-                ]
-            })
-        ```
-        
-        Use your data expertise to identify what tables would best summarize the analysis results and provide actionable insights to the user.
-        """
+            The dataTransformationCode should transform the DataFrame (named df) and assign the result to result_df.
+            Include any necessary aggregations, sorting, filtering, or calculations to present the most relevant insights.
+            
+            IMPORTANT GUIDELINES:
+            1. Create tables that answer the user's query directly
+            2. Prioritize presenting actionable insights rather than raw data
+            3. For each key finding in the analysis, create a focused table (e.g., "Top Performers", "Trend Summary")
+            4. Limit tables to relevant columns only (5-7 columns maximum for readability)
+            5. Include summary rows where appropriate (totals, averages)
+            6. Format numbers appropriately (currency, percentages, etc.)
+            7. In your dataTransformationCode, directly access the df variable or analysis_result keys, NOT 'data'
+            8. Tables should complement the visualizations, not duplicate them
+            9. Each table should tell a specific part of the overall data story
+            
+            For example transformation code:
+            ```python
+            # For a summary table of key metrics by region
+            if 'regional_analysis' in analysis_result:
+                region_data = pd.DataFrame(analysis_result['regional_analysis'])
+                # Select only the most important columns
+                result_df = region_data[['Region', 'Revenue', 'Profit', 'Units', 'Profit_Margin']]
+                # Sort by highest profit margin
+                result_df = result_df.sort_values('Profit_Margin', ascending=False)
+                # Add a summary row with totals/averages
+                summary_row = pd.DataFrame({{
+                    'Region': ['Total/Average'],
+                    'Revenue': [result_df['Revenue'].sum()],
+                    'Profit': [result_df['Profit'].sum()],
+                    'Units': [result_df['Units'].sum()],
+                    'Profit_Margin': [result_df['Profit_Margin'].mean()]
+                }})
+                result_df = pd.concat([result_df, summary_row], ignore_index=True)
+            else:
+                # Create a summary of key statistics from the original data
+                result_df = pd.DataFrame({{
+                    'Metric': ['Total Revenue', 'Average Order Value', 'Total Units', 'Profit Margin'],
+                    'Value': [
+                        df['Revenue'].sum(),
+                        df['Revenue'].sum() / len(df) if len(df) > 0 else 0,
+                        df['Units'].sum(),
+                        df['Profit'].sum() / df['Revenue'].sum() * 100 if df['Revenue'].sum() > 0 else 0
+                    ]
+                }})
+            ```
+            
+            Use your data expertise to identify what tables would best summarize the analysis results and provide actionable insights to the user.
+            """
 
         # Get table recommendations from OpenAI
         response = self.client.chat.completions.create(
