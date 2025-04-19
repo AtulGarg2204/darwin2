@@ -573,22 +573,28 @@ class StatisticalAgent:
                 return str(obj)
     
     async def _generate_visualizations(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
-                                source_sheet_id: str, target_sheet_id: str, original_request:str) -> List[Dict[str, Any]]:
-        """Generate visualizations based on analysis results."""
+                                source_sheet_id: str, target_sheet_id: str, original_request: str) -> List[Dict[str, Any]]:
+        """Generate visualizations based on analysis results as Plotly HTML instead of chart configs."""
         
-        # Get a sample of the dataframe and column types to provide better context
+        # Get a sample of the dataframe and column types for context
         df_sample = df.head(3).to_dict('records')
         column_types = {col: str(df[col].dtype) for col in df.columns}
         
-        # Create visualization prompt with more detailed guidance
-        # Note: All curly braces in code examples are doubled to escape them in f-strings
+        # Columns categorized by type for better prompting
+        numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+        categorical_columns = df.select_dtypes(include=['object', 'category']).columns.tolist()
+        date_columns = df.select_dtypes(include=['datetime']).columns.tolist()
+        
+        # Create visualization prompt with rich examples
         prompt = f"""
-        You are a data visualization expert. I need you to create visualization configurations based on this dataset.
+        You are a data visualization expert. I need you to create visualization recommendations based on this dataset.
 
         USER REQUEST: "{original_request}"
 
         DATASET INFORMATION:
-        - Columns and types: {column_types}
+        - Numeric columns: {numeric_columns}
+        - Categorical columns: {categorical_columns}
+        - Date/time columns: {date_columns}
         - Sample rows: {df_sample}
         - Total rows: {len(df)}
         
@@ -597,258 +603,540 @@ class StatisticalAgent:
         {json.dumps(analysis_result, default=str, indent=2)}
         ```
 
-        Create up to 3 visualization configurations that best answer the user's request.
-        Each visualization should focus on one clear insight.
+        Create 2-3 visualizations that best answer the user's request. Each visualization should focus on ONE clear insight.
 
-        Return a JSON object with a "visualizations" array containing visualization configs. Each config should have:
-        {{
-            "type": "chart type (bar, line, scatter, pie, heatmap)",
-            "title": "Chart title that describes the insight",
-            "xAxisColumn": "Column name for x-axis",
-            "yAxisColumns": ["Column name(s) for y-axis values"],
-            "groupByColumn": "Column to group data by (usually categorical like 'Segment')",
-            "dataTransformationCode": "Python code block described below",
-            "visualization": {{
-                "colors": ["#4e79a7", "#f28e2b", "#59a14f"],
-                "stacked": false
-            }}
-        }}
-
-        IMPORTANT RULES FOR dataTransformationCode:
-        0. 
-        - You should always use the provided DataFrame 'df' - do not recreate or hardcode data or use 'analysis_result'
-        - The code should be executable and produce a DataFrame called 'result_df'
-        - The code should be valid Python code without any markdown formatting
-
-        1. Must produce a DataFrame called 'result_df' with AT LEAST these columns: 
-        - The column specified in xAxisColumn
-        - All columns specified in yAxisColumns
-        - The column specified in groupByColumn (if provided)
+        # VISUALIZATION GUIDELINES:
+        1. Choose appropriate chart types:
+        - Use BAR charts for comparing categories
+        - Use LINE charts for trends over time
+        - Use SCATTER charts for relationships between variables
+        - Use PIE charts only for parts of a whole (limit to max 6-7 slices)
+        - Use HORIZONTAL BAR charts when dealing with long category names
         
-        2. Write clean, multi-line Python code - NO semicolons to separate statements
+        2. Data transformations:
+        - For category comparisons: Group and aggregate data properly
+        - For "top N" analysis: Sort and slice the data
+        - For complex comparisons: Create new calculated columns if needed
         
-        3. Use standard pandas operations:
-        - For aggregations: df.groupby('Category')['Value'].sum().reset_index()
-        - For filtering: df[df['Column'] > threshold]
-        - For sorting: df.sort_values('Column', ascending=False)
+        3. For each visualization provide:
+        - A clear, insight-focused title (e.g., "Revenue Increased 25% in Q4 2023" NOT "Revenue by Quarter")
+        - A description of what insight the chart reveals
+        - Which chart type to use and why
+        - Complete Python code for data transformation that outputs a DataFrame named 'result_df'
         
-        4. Ensure all columns referenced in xAxisColumn, yAxisColumns, and groupByColumn exist in result_df
+        # EXAMPLES OF GOOD VISUALIZATIONS:
         
-        5. Keep it simple - don't try to create complex nested structures
-        
-        6. ONLY use the provided dataframe 'df' - don't try to recreate or hardcode data
-
-        7. For segmented bar charts comparing groups, use this pattern:
-        ```python
-        # Get top 3 products by sales in each segment
-        segments = []
-        for segment in df['Segment'].unique():
-            segment_df = df[df['Segment'] == segment]
-            top_products = segment_df.groupby('Product')['Sales'].sum().reset_index()
-            top_products = top_products.sort_values('Sales', ascending=False).head(3)
-            top_products['Segment'] = segment
-            segments.append(top_products)
-        
-        result_df = pd.concat(segments, ignore_index=True)
-        # Now result_df has Product, Sales, and Segment columns
-        # Use Segment as groupByColumn to color bars by segment
+        Example 1 (Top categories):
+        ```
+        {
+        "title": "Chairs Generate 3x More Profit than Other Furniture Items",
+        "description": "Shows that chairs are the dominant profit generator in the Furniture category",
+        "chartType": "bar",
+        "dataFields": {
+            "x": "Sub-Category",
+            "y": "Profit",
+            "color": "Category"
+        },
+        "dataTransformationCode": "# Get top sub-category by profit for each category\\ncategory_subcat_profit = df.groupby(['Category', 'Sub-Category'])['Profit'].sum().reset_index()\\ntop_subcats = category_subcat_profit.sort_values('Profit', ascending=False).groupby('Category').head(1)\\nresult_df = top_subcats.sort_values('Profit', ascending=False)"
+        }
         ```
         
-        8. For grouped bar charts (e.g., showing values by segment), use this pattern:
-        ```python
-        # Group by Category and Segment to show segment breakdown per category
-        result_df = df.groupby(['Category', 'Segment'])['Sales'].sum().reset_index()
-        result_df = result_df.sort_values(['Category', 'Sales'], ascending=[True, False])
-        # Use Category as xAxisColumn and Segment as groupByColumn
+        Example 2 (Time trend):
+        ```
+        {
+        "title": "Sales Doubled in Q4 Compared to Q1 Across All Regions",
+        "description": "Reveals a strong seasonal pattern with Q4 consistently outperforming other quarters",
+        "chartType": "line",
+        "dataFields": {
+            "x": "Quarter",
+            "y": "Sales",
+            "color": "Region"
+        },
+        "dataTransformationCode": "# Create quarterly trend by region\\ndf['Quarter'] = pd.PeriodIndex(df['Order Date'], freq='Q')\\nresult_df = df.groupby(['Quarter', 'Region'])['Sales'].sum().reset_index()\\nresult_df['Quarter'] = result_df['Quarter'].astype(str)"
+        }
         ```
         
-        9. For scatter plots, BOTH xAxisColumn and yAxisColumns[0] must be numeric columns:
-        ```python
-        # For a scatter plot of Profit vs Sales
-        result_df = df.groupby('Customer_Name').agg({{
-            'Sales': 'sum',
-            'Profit': 'sum'
-        }}).reset_index()
-        # Use 'Sales' as xAxisColumn and ['Profit'] as yAxisColumns
-        ```
-
-        Provide visualizations that directly address the user's request with clear titles describing the insight shown.
+        # COMMON MISTAKES TO AVOID:
+        - DON'T include too many categories (limit to top 5-7 for readability)
+        - DON'T try to show too many metrics in one chart
+        - DON'T use pie charts for more than 7 categories
+        - DON'T forget to sort data in a meaningful way
+        - DON'T use line charts for categorical data
+        - DON'T create misleading aggregations or comparisons
+        
+        Return a JSON object with a "visualizations" array. Each element should contain title, description, chartType, dataFields and dataTransformationCode.
         """
 
         # Get visualization recommendations from OpenAI
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": "You are a data visualization API that returns only valid JSON with detailed, executable Python code."},
+                {"role": "system", "content": "You are a data visualization expert. Return only valid JSON with detailed visualization specs."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.2,
             response_format={"type": "json_object"}
         )
 
-        print("VISUALIZATION CONFIGS:")
+        print("VISUALIZATION SPECS:")
         print(response.choices[0].message.content)
 
         # Parse the visualization configurations
         viz_configs_response = json.loads(response.choices[0].message.content)
         viz_configs = viz_configs_response.get("visualizations", [])
-        if not isinstance(viz_configs, list):
-            viz_configs = [viz_configs]
-
-        chart_configs = []
+        
+        chart_outputs = []
         for viz_config in viz_configs:
             try:
+                title = viz_config.get("title", "Chart")
+                description = viz_config.get("description", "")
+                chart_type = viz_config.get("chartType", "bar")
+                data_fields = viz_config.get("dataFields", {})
+                
                 # Execute the data transformation code
-                local_scope = {"df": df, "pd": pd, "np": np}
+                local_scope = {"df": df.copy(), "pd": pd, "np": np}
                 exec(viz_config["dataTransformationCode"], local_scope)
                 result_df = local_scope.get("result_df")
 
-                if result_df is None:
-                    print(f"Warning: No result_df produced for visualization {viz_config['title']}")
+                if result_df is None or result_df.empty:
+                    print(f"Warning: No result_df produced for visualization '{title}'")
                     continue
                     
-                # Check required columns exist
-                required_cols = [viz_config["xAxisColumn"]] + viz_config["yAxisColumns"]
-                if "groupByColumn" in viz_config and viz_config["groupByColumn"]:
-                    required_cols.append(viz_config["groupByColumn"])
-                    
-                missing_cols = [col for col in required_cols if col not in result_df.columns]
-                if missing_cols:
-                    print(f"Warning: Missing columns {missing_cols} in result_df for {viz_config['title']}")
-                    continue
-
-                # Convert DataFrame to chart data format
-                chart_data = []
+                # Map fields from the configuration
+                x_column = data_fields.get("x")
+                y_columns = [data_fields.get("y")] if data_fields.get("y") else []
+                if data_fields.get("y_multi"):
+                    y_columns = data_fields.get("y_multi")
+                color_column = data_fields.get("color")
+                size_column = data_fields.get("size")
                 
-                # Handle different chart types with proper grouping
-                if viz_config["type"] in ["bar", "line", "area"]:
-                    # Get the groupByColumn if specified
-                    group_by_col = viz_config.get("groupByColumn")
-                    
-                    if group_by_col and group_by_col in result_df.columns:
-                        # Group data by the specified column
-                        for group_val in result_df[group_by_col].unique():
-                            group_data = result_df[result_df[group_by_col] == group_val]
-                            
-                            for _, row in group_data.iterrows():
-                                data_point = {
-                                    "name": str(row[viz_config["xAxisColumn"]]),
-                                    "group": str(group_val)  # Add group identifier
-                                }
-                                
-                                for y_col in viz_config["yAxisColumns"]:
-                                    try:
-                                        data_point[y_col] = float(row[y_col])
-                                    except (ValueError, TypeError):
-                                        data_point[y_col] = 0
-                                
-                                chart_data.append(data_point)
-                    else:
-                        # No grouping - standard bar/line chart
-                        for _, row in result_df.iterrows():
-                            data_point = {"name": str(row[viz_config["xAxisColumn"]])}
-                            
-                            for y_col in viz_config["yAxisColumns"]:
-                                try:
-                                    data_point[y_col] = float(row[y_col])
-                                except (ValueError, TypeError):
-                                    data_point[y_col] = 0
-                                    
-                            chart_data.append(data_point)
-                    
-                elif viz_config["type"] == "scatter":
-                    # For scatter plots, ensure both x and y are numeric
-                    if pd.api.types.is_numeric_dtype(result_df[viz_config["xAxisColumn"]]) and \
-                    pd.api.types.is_numeric_dtype(result_df[viz_config["yAxisColumns"][0]]):
-                        
-                        group_by_col = viz_config.get("groupByColumn")
-                        
-                        if group_by_col and group_by_col in result_df.columns:
-                            # Group scatter points
-                            for group_val in result_df[group_by_col].unique():
-                                group_data = result_df[result_df[group_by_col] == group_val]
-                                
-                                for _, row in group_data.iterrows():
-                                    chart_data.append({
-                                        "x": float(row[viz_config["xAxisColumn"]]),
-                                        "y": float(row[viz_config["yAxisColumns"][0]]),
-                                        "name": str(row.get("Customer_Name", f"Point {_}")),
-                                        "group": str(group_val)
-                                    })
-                        else:
-                            # No grouping
-                            for _, row in result_df.iterrows():
-                                chart_data.append({
-                                    "x": float(row[viz_config["xAxisColumn"]]),
-                                    "y": float(row[viz_config["yAxisColumns"][0]]),
-                                    "name": str(row.get("Customer_Name", f"Point {_}"))
-                                })
-                    else:
-                        print(f"Warning: Non-numeric columns used for scatter plot in {viz_config['title']}")
-                        continue
-                        
-                elif viz_config["type"] == "pie":
-                    for _, row in result_df.iterrows():
-                        try:
-                            value = float(row[viz_config["yAxisColumns"][0]])
-                            chart_data.append({
-                                "name": str(row[viz_config["xAxisColumn"]]),
-                                "value": value
-                            })
-                        except (ValueError, TypeError):
-                            continue
-                            
-                elif viz_config["type"] == "heatmap":
-                    try:
-                        # Create a pivot table for heatmap
-                        if len(viz_config["yAxisColumns"]) > 1:
-                            pivot = pd.pivot_table(
-                                result_df,
-                                values=viz_config["yAxisColumns"][0],
-                                index=viz_config["xAxisColumn"],
-                                columns=viz_config["yAxisColumns"][1],
-                                aggfunc='mean'
-                            ).fillna(0)
-
-                            for idx_val in pivot.index:
-                                for col_val in pivot.columns:
-                                    chart_data.append({
-                                        "x": str(idx_val),
-                                        "y": str(col_val),
-                                        "value": float(pivot.loc[idx_val, col_val])
-                                    })
-                        else:
-                            print(f"Warning: Not enough dimensions for heatmap in {viz_config['title']}")
-                            continue
-                    except Exception as e:
-                        print(f"Error creating heatmap data: {str(e)}")
-                        continue
-
-                if chart_data:
-                    chart_config = {
-                        "type": viz_config["type"],
-                        "title": viz_config["title"],
-                        "data": chart_data,
-                        "colors": viz_config["visualization"].get("colors", ["#4e79a7", "#f28e2b", "#59a14f"]),
-                        "stacked": viz_config["visualization"].get("stacked", False),
-                        "sourceSheetId": source_sheet_id,
-                        "targetSheetId": target_sheet_id
-                    }
-                    
-                    # Add grouping information if available
-                    if "groupByColumn" in viz_config and viz_config["groupByColumn"]:
-                        chart_config["groupByColumn"] = viz_config["groupByColumn"]
-                        
-                    chart_configs.append(chart_config)
-                else:
-                    print(f"Warning: No valid chart data generated for {viz_config['title']}")
-
+                # Generate the plotly chart
+                chart_html = self._create_plotly_chart(
+                    result_df, 
+                    chart_type,
+                    title,
+                    x_column,
+                    y_columns,
+                    color_column,
+                    size_column,
+                    description
+                )
+                
+                # Add to output
+                chart_outputs.append({
+                    "title": title,
+                    "description": description,
+                    "htmlContent": chart_html,
+                    "sourceSheetId": source_sheet_id,
+                    "targetSheetId": target_sheet_id
+                })
+                
             except Exception as e:
-                print(f"Error generating chart for {viz_config.get('title', 'unknown')}: {str(e)}")
+                print(f"Error generating chart '{viz_config.get('title', 'unknown')}': {str(e)}")
                 traceback.print_exc()
-                continue
+                
+                # Add error visualization
+                error_html = f"""
+                <div style="width:100%;height:300px;border:1px solid #ddd;border-radius:4px;padding:20px;background:#f9f9f9;">
+                    <h3 style="color:#d32f2f;margin-top:0">Error Creating Chart</h3>
+                    <p>We encountered a problem while generating this visualization:</p>
+                    <pre style="background:#f1f1f1;padding:10px;border-radius:4px;font-size:12px;overflow:auto">
+                        {str(e)}
+                    </pre>
+                </div>
+                """
+                
+                chart_outputs.append({
+                    "title": viz_config.get("title", "Chart Error"),
+                    "description": "Error creating visualization",
+                    "htmlContent": error_html,
+                    "sourceSheetId": source_sheet_id,
+                    "targetSheetId": target_sheet_id,
+                    "error": str(e)
+                })
+        
+        return chart_outputs
+    
+    def _create_plotly_chart(self, df, chart_type, title, x_column, y_columns=None, 
+                            color_column=None, size_column=None, description=None):
+        """
+        Create a Plotly chart and return it as HTML.
+        
+        Args:
+            df: Pandas DataFrame with the data to visualize
+            chart_type: Type of chart to create (bar, line, pie, scatter, etc.)
+            title: Chart title
+            x_column: Column to use for x-axis
+            y_columns: List of columns to use for y-axis
+            color_column: Column to use for color encoding
+            size_column: Column to use for size encoding (scatter plots)
+            description: Optional description to show under the title
+            
+        Returns:
+            HTML string with the Plotly chart
+        """
+        import plotly.express as px
+        import plotly.io as pio
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+        
+        # Ensure y_columns is a list
+        if y_columns is None:
+            y_columns = []
+        elif isinstance(y_columns, str):
+            y_columns = [y_columns]
+        
+        # Function to detect if we should use horizontal bar chart
+        def should_use_horizontal_bar():
+            if not x_column or x_column not in df.columns:
+                return False
+                
+            # Use horizontal bars for categorical x-axis with many or long categories
+            if df[x_column].dtype == 'object' or df[x_column].dtype.name == 'category':
+                if len(df) > 5:  # More than 5 categories
+                    return True
+                    
+                # Check for long category names
+                avg_len = df[x_column].astype(str).str.len().mean()
+                return avg_len > 10  # Long category names
+                
+            return False
+        
+        # Default figure settings
+        width, height = 800, 500
+        template = "plotly_white"  # Clean white template
+        
+        try:
+            # Detect if we need value formatting based on column naming conventions
+            currency_columns = [col for col in df.columns if any(term in col.lower() for term in 
+                            ['price', 'revenue', 'sales', 'profit', 'cost', 'margin', 'income'])]
+            
+            percentage_columns = [col for col in df.columns if any(term in col.lower() for term in 
+                                ['percent', 'rate', 'ratio', 'margin'])]
+            
+            # Create various chart types
+            if chart_type.lower() in ['bar', 'column', 'histogram']:
+                # Determine if we should use horizontal bar layout
+                horizontal = should_use_horizontal_bar()
+                orientation = 'h' if horizontal else 'v'
+                
+                # Check for stacked option (from title or description)
+                stacked = any(['stack' in title.lower(), 'stack' in (description or '').lower()])
+                bar_mode = 'stack' if stacked else 'group'
+                
+                # Single y-column or multiple y-columns approach
+                if len(y_columns) <= 1 and color_column:
+                    # Use color for groups
+                    y_col = y_columns[0] if y_columns else df.columns[1]
+                    
+                    if horizontal:
+                        fig = px.bar(
+                            df, 
+                            x=y_col, 
+                            y=x_column, 
+                            color=color_column,
+                            title=title,
+                            orientation='h',
+                            barmode=bar_mode,
+                            text=y_col if len(df) <= 15 else None  # Only show text for smaller datasets
+                        )
+                    else:
+                        fig = px.bar(
+                            df, 
+                            x=x_column, 
+                            y=y_col, 
+                            color=color_column,
+                            title=title,
+                            barmode=bar_mode,
+                            text=y_col if len(df) <= 15 else None
+                        )
+                elif len(y_columns) > 1:
+                    # Multiple metrics - use each as a series
+                    fig = go.Figure()
+                    
+                    for i, y_col in enumerate(y_columns):
+                        fig.add_trace(go.Bar(
+                            x=df[x_column] if not horizontal else df[y_col],
+                            y=df[y_col] if not horizontal else df[x_column],
+                            name=y_col,
+                            orientation=orientation,
+                            text=df[y_col] if len(df) <= 15 else None,
+                            textposition='outside'
+                        ))
+                    
+                    fig.update_layout(
+                        title=title,
+                        barmode=bar_mode
+                    )
+                else:
+                    # Simple bar chart
+                    y_col = y_columns[0] if y_columns else df.columns[1]
+                    
+                    if horizontal:
+                        fig = px.bar(
+                            df, 
+                            x=y_col, 
+                            y=x_column, 
+                            title=title,
+                            orientation='h',
+                            text=y_col if len(df) <= 15 else None
+                        )
+                    else:
+                        fig = px.bar(
+                            df, 
+                            x=x_column, 
+                            y=y_col, 
+                            title=title,
+                            text=y_col if len(df) <= 15 else None
+                        )
+                
+                # Adjust text display for currency/percentage columns
+                for i, y_col in enumerate(y_columns or [df.columns[1]]):
+                    if y_col in currency_columns:
+                        text_template = '$%{text:.1f}'
+                    elif y_col in percentage_columns:
+                        text_template = '%{text:.1f}%'
+                    else:
+                        text_template = '%{text:.1f}'
+                    
+                    fig.update_traces(
+                        texttemplate=text_template,
+                        textposition='outside',
+                        selector=dict(name=y_col)
+                    )
+                
+                # Add better margin for horizontal bar charts
+                if horizontal:
+                    fig.update_layout(
+                        margin=dict(l=150 if len(df[x_column].astype(str).max()) > 10 else 100, r=50, t=100, b=50)
+                    )
+                
+            elif chart_type.lower() == 'line':
+                # Check for time series
+                is_timeseries = False
+                if x_column and x_column in df.columns:
+                    if pd.api.types.is_datetime64_any_dtype(df[x_column]):
+                        is_timeseries = True
+                    elif df[x_column].dtype == 'object' and all(pd.to_datetime(df[x_column], errors='coerce').notna()):
+                        # Try to convert to datetime
+                        df[x_column] = pd.to_datetime(df[x_column])
+                        is_timeseries = True
+                
+                if color_column:
+                    fig = px.line(
+                        df, 
+                        x=x_column, 
+                        y=y_columns[0] if y_columns else df.columns[1],
+                        color=color_column,
+                        title=title,
+                        markers=True
+                    )
+                elif len(y_columns) > 1:
+                    # Multiple lines
+                    fig = px.line(
+                        df, 
+                        x=x_column, 
+                        y=y_columns,
+                        title=title,
+                        markers=True
+                    )
+                else:
+                    y_col = y_columns[0] if y_columns else df.columns[1]
+                    fig = px.line(
+                        df, 
+                        x=x_column, 
+                        y=y_col,
+                        title=title,
+                        markers=True
+                    )
+                
+                # Improve time series display
+                if is_timeseries:
+                    fig.update_xaxes(
+                        rangeslider_visible=False,
+                        tickformatstops=[
+                            dict(dtickrange=[None, 1000], value="%H:%M:%S.%L ms"),
+                            dict(dtickrange=[1000, 60000], value="%H:%M:%S"),
+                            dict(dtickrange=[60000, 3600000], value="%H:%M"),
+                            dict(dtickrange=[3600000, 86400000], value="%H:%M"),
+                            dict(dtickrange=[86400000, 604800000], value="%e %b"),
+                            dict(dtickrange=[604800000, "M1"], value="%e %b"),
+                            dict(dtickrange=["M1", "M12"], value="%b '%y"),
+                            dict(dtickrange=["M12", None], value="%Y")
+                        ]
+                    )
+                    
+            elif chart_type.lower() == 'pie':
+                # Force a reasonable limit on pie chart slices
+                if len(df) > 8:
+                    # Combine smaller slices into "Other"
+                    y_col = y_columns[0] if y_columns else df.columns[1]
+                    df = df.sort_values(y_col, ascending=False).reset_index(drop=True)
+                    
+                    top_rows = df.iloc[:7].copy()
+                    other_sum = df.iloc[7:][y_col].sum()
+                    
+                    other_row = pd.DataFrame({
+                        x_column: ['Other'],
+                        y_col: [other_sum]
+                    })
+                    
+                    if color_column and color_column in df.columns:
+                        other_row[color_column] = ['Other']
+                        
+                    df = pd.concat([top_rows, other_row], ignore_index=True)
+                
+                fig = px.pie(
+                    df, 
+                    values=y_columns[0] if y_columns else df.columns[1],
+                    names=x_column,
+                    title=title,
+                    color=color_column if color_column and color_column != x_column else None
+                )
+                
+                # Improve pie chart display
+                fig.update_traces(
+                    textposition='inside',
+                    textinfo='percent+label',
+                    hole=0.4,  # Make it a donut chart for better readability
+                    pull=[0.05 if i == 0 else 0 for i in range(len(df))],  # Pull out the first slice
+                    marker=dict(line=dict(color='white', width=2))
+                )
+                
+            elif chart_type.lower() == 'scatter':
+                # Default size column if using bubble chart
+                if len(y_columns) > 1 and not size_column:
+                    size_column = y_columns[1]
+                    
+                fig = px.scatter(
+                    df,
+                    x=x_column,
+                    y=y_columns[0] if y_columns else df.columns[1],
+                    color=color_column,
+                    size=size_column,
+                    title=title,
+                    hover_name=df.index if len(df.index.names) == 1 else None
+                )
+                
+                # Add trendline for interesting relationships
+                if size_column is None and color_column is None:
+                    fig.update_layout(
+                        shapes=[{
+                            'type': 'line',
+                            'x0': df[x_column].min(),
+                            'y0': df[y_columns[0] if y_columns else df.columns[1]].min(),
+                            'x1': df[x_column].max(),
+                            'y1': df[y_columns[0] if y_columns else df.columns[1]].max(),
+                            'line': {
+                                'color': 'rgba(100, 100, 100, 0.5)',
+                                'width': 1,
+                                'dash': 'dot'
+                            }
+                        }]
+                    )
+                    
+            elif chart_type.lower() == 'heatmap':
+                # Create a pivot table for heatmap
+                if len(y_columns) > 0 and x_column and color_column:
+                    pivot_df = df.pivot_table(
+                        values=y_columns[0],
+                        index=x_column,
+                        columns=color_column,
+                        aggfunc='mean'
+                    ).fillna(0)
+                    
+                    fig = px.imshow(
+                        pivot_df,
+                        title=title,
+                        labels=dict(x=color_column, y=x_column, color=y_columns[0]),
+                        text_auto='.1f'
+                    )
+                else:
+                    # Not enough dimensions specified
+                    fig = go.Figure()
+                    fig.update_layout(
+                        title=title,
+                        annotations=[{
+                            'text': 'Not enough dimensions for heatmap',
+                            'showarrow': False,
+                            'font': {'size': 20}
+                        }]
+                    )
+                    
+            else:
+                # Fallback for unknown chart types
+                fig = px.bar(
+                    df,
+                    x=x_column if x_column else df.columns[0],
+                    y=y_columns[0] if y_columns else df.columns[1],
+                    title=f"{title} (Fallback Bar Chart)"
+                )
 
-        return chart_configs
+            # Add subtitle/description if provided
+            if description:
+                fig.update_layout(
+                    title={
+                        'text': f"{title}<br><sup>{description}</sup>",
+                        'y':0.95,
+                        'x':0.5,
+                        'xanchor': 'center',
+                        'yanchor': 'top'
+                    }
+                )
+                
+            # Common layout improvements
+            fig.update_layout(
+                width=width,
+                height=height,
+                template=template,
+                legend={'orientation': 'h', 'y': -0.15} if len(df.columns) > 3 else None,
+                margin=dict(l=50, r=30, t=100, b=100)
+            )
+            
+            # Add special handling for currency/percentage y-axis
+            for i, y_col in enumerate(y_columns or [df.columns[1]]):
+                if y_col in currency_columns:
+                    fig.update_yaxes(tickprefix='$', tickformat=',.1f')
+                elif y_col in percentage_columns:
+                    fig.update_yaxes(ticksuffix='%', tickformat='.1f')
+            
+            # Convert to HTML string
+            html_str = pio.to_html(
+                fig, 
+                full_html=False, 
+                include_plotlyjs='cdn',
+                config={
+                    'responsive': True,
+                    'displayModeBar': True,
+                    'modeBarButtonsToRemove': ['select2d', 'lasso2d'],
+                    'toImageButtonOptions': {
+                        'format': 'png',
+                        'filename': title.replace(' ', '_'),
+                        'height': height,
+                        'width': width,
+                        'scale': 2
+                    }
+                }
+            )
+            
+            return html_str
+            
+        except Exception as e:
+            print(f"Error creating plotly chart: {str(e)}")
+            traceback.print_exc()
+            # Return a simple error message as HTML
+            return f"""
+            <div style="width:100%;height:400px;border:1px solid #ddd;padding:20px;display:flex;flex-direction:column;justify-content:center;align-items:center;background:#f9f9f9;">
+                <h3 style="color:#d32f2f;margin-bottom:15px">{title}</h3>
+                <div style="text-align:center;max-width:80%;">
+                    <p>There was an error creating this visualization:</p>
+                    <div style="background:#f1f1f1;padding:10px;border-radius:4px;margin:10px 0;text-align:left;font-family:monospace;overflow:auto">
+                        {str(e)}
+                    </div>
+                    <p>Please try a different visualization type or check your data.</p>
+                </div>
+            </div>
+            """
     
     async def _generate_tables(self, analysis_result: Dict[str, Any], df: pd.DataFrame, 
                                 source_sheet_id: str, target_sheet_id: str, original_request: str) -> List[Dict[str, Any]]:
@@ -1127,10 +1415,10 @@ class StatisticalAgent:
             print("ANALYSIS RESULT:")
             print(json.dumps(analysis_result, indent=2)+"\n")
             
-            # Generate visualizations
-            chart_configs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
+            # Generate visualizations - now using Plotly HTML
+            chart_outputs = await self._generate_visualizations(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
             
-            # Generate tables
+            # Generate tables (using your existing method)
             table_configs = await self._generate_tables(analysis_result, df, primary_sheet_id, target_sheet_id, request.message)
             
             # Generate interpretation
@@ -1141,12 +1429,12 @@ class StatisticalAgent:
                 analysis_package.get("interpretation_guide", "")
             )
             
-            # Return the final response
+            # Return the final response with the new chart format
             return {
                 "text": interpretation,
                 "analysisType": analysis_package.get("analysis_type", "Statistical Analysis"),
-                "chartConfig": chart_configs,
-                "tableConfig": table_configs,  # Add the table configs to the response
+                "charts": chart_outputs,  # Changed from chartConfig to charts
+                "tableConfig": table_configs,
                 "sourceSheetId": primary_sheet_id,
                 "targetSheetId": target_sheet_id,
                 "operation": "statistical",
@@ -1154,8 +1442,8 @@ class StatisticalAgent:
                     "rows_analyzed": len(df),
                     "columns_analyzed": len(df.columns),
                     "analysis_type": analysis_package.get("analysis_type"),
-                    "visualization_count": len(chart_configs),
-                    "table_count": len(table_configs)  # Add count of tables generated
+                    "chart_count": len(chart_outputs),
+                    "table_count": len(table_configs)
                 }
             }
             
