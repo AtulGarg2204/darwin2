@@ -9,7 +9,7 @@ from together import Together
 
 class RequestClassifier:
     def __init__(self):
-        if os.getenv("USE_TOGETHER"):
+        if os.getenv("MODEL") == "TOGETHER":
             print("Using Together API...")
             try:
                 self.client = Together(api_key=os.getenv("TOGETHER_API_KEY"))

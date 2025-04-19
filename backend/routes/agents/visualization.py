@@ -14,7 +14,7 @@ dotenv.load_dotenv()
 class DataVizualizationAgent:
     def __init__(self):
         """Initialize the DataVizualizationAgent with the OpenAI client."""
-        if os.getenv("USE_TOGETHER"):
+        if os.getenv("MODEL") == "TOGETHER":
             print("Using Together API...")
             try:
                 api_key = os.getenv("TOGETHER_API_KEY")
