@@ -261,14 +261,44 @@ getCellStyle: (rowIndex, colIndex, cellFormats) => {
               // Extract the chart configuration from the cell value
               const chartConfigStr = parts.slice(1, -1).join(':');
               
-              const chartConfig = JSON.parse(chartConfigStr);
+              let chartConfig;
+              try {
+                chartConfig = JSON.parse(chartConfigStr);
+              } catch (jsonError) {
+                console.error("Error parsing chart JSON:", jsonError);
+                return (
+                  <div className="p-4 bg-red-50 text-red-700 absolute" style={{
+                    width: '240px',
+                    height: '160px',
+                    zIndex: 10,
+                    border: '1px solid #fee2e2',
+                    borderRadius: '4px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                    overflow: 'auto'
+                  }}>
+                    <h3 className="font-semibold mb-1">Chart JSON Error</h3>
+                    <p className="text-xs mb-1">{jsonError.message}</p>
+                    <p className="text-xs italic">Check for special characters or invalid JSON format</p>
+                  </div>
+                );
+              }
               
               // Validate the chart data
               if (!chartConfig.data || !Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
                 console.error("Invalid chart data extracted:", chartConfig.data);
-                return <div className="p-4 bg-red-50 text-red-700">
-                  Chart data is missing or invalid
-                </div>;
+                return (
+                  <div className="p-4 bg-red-50 text-red-700 absolute" style={{
+                    width: '240px',
+                    height: '160px',
+                    zIndex: 10,
+                    border: '1px solid #fee2e2',
+                    borderRadius: '4px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.12)'
+                  }}>
+                    <h3 className="font-semibold mb-1">Chart Data Error</h3>
+                    <p className="text-xs">Chart data is missing or invalid</p>
+                  </div>
+                );
               }
               
               // Render the chart with the extracted configuration
@@ -282,9 +312,20 @@ getCellStyle: (rowIndex, colIndex, cellFormats) => {
               );
             } catch (error) {
               console.error("Error parsing chart config from cell:", error);
-              return <div className="p-4 bg-red-50 text-red-700">
-                Error parsing chart: {error.message}
-              </div>;
+              return (
+                <div className="p-4 bg-red-50 text-red-700 absolute" style={{
+                  width: '240px',
+                  height: '160px',
+                  zIndex: 10,
+                  border: '1px solid #fee2e2',
+                  borderRadius: '4px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+                  overflow: 'auto'
+                }}>
+                  <h3 className="font-semibold mb-1">Chart Error</h3>
+                  <p className="text-xs">{error.message || 'Error parsing chart configuration'}</p>
+                </div>
+              );
             }
           })()
         ) : (

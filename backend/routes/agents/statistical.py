@@ -425,6 +425,22 @@ class StatisticalAgent:
             - Include both summary metrics AND detailed records for complete analysis
             - When asked for "best" or "worst", include BOTH the extreme values AND the full dataset
 
+        # CRITICAL NOTE ABOUT USING safe_groupby_agg:
+        The safe_groupby_agg function returns a DataFrame with regular columns, NOT a multi-index DataFrame. 
+        This is because it calls .reset_index() internally.
+
+        CORRECT way to filter results after using safe_groupby_agg:
+        ```python
+        # Group data
+        grouped_df = safe_groupby_agg(df, ['Category', 'Region'], {{'Sales': 'sum'}})
+
+        # Filter by a category (CORRECT)
+        category_data = grouped_df[grouped_df['Category'] == 'Furniture']
+
+        # Sort values (CORRECT)
+        sorted_data = grouped_df.sort_values('Sales', ascending=False)
+        ```
+
         REMEMBER: The data is already loaded as a DataFrame named 'df'. DO NOT attempt to load or create a new DataFrame.
 
         Return your response as a JSON object, with the implementation code as a plain string without any markdown formatting characters.
@@ -670,6 +686,22 @@ class StatisticalAgent:
             'Profit': 'sum'
         }}).reset_index()
         # Use 'Sales' as xAxisColumn and ['Profit'] as yAxisColumns
+        ```
+
+        # CRITICAL NOTE ABOUT USING safe_groupby_agg:
+        The safe_groupby_agg function returns a DataFrame with regular columns, NOT a multi-index DataFrame. 
+        This is because it calls .reset_index() internally.
+
+        CORRECT way to filter results after using safe_groupby_agg:
+        ```python
+        # Group data
+        grouped_df = safe_groupby_agg(df, ['Category', 'Region'], {{'Sales': 'sum'}})
+
+        # Filter by a category (CORRECT)
+        category_data = grouped_df[grouped_df['Category'] == 'Furniture']
+
+        # Sort values (CORRECT)
+        sorted_data = grouped_df.sort_values('Sales', ascending=False)
         ```
 
         Provide visualizations that directly address the user's request with clear titles describing the insight shown.
