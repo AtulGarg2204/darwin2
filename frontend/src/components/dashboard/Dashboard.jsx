@@ -183,6 +183,55 @@ const handleSelectionChange = () => {
         if (chartConfig && Array.isArray(chartConfig)) {
             console.log("Handling multi-chart statistical analysis:", chartConfig.length, "charts");
             
+            // Validate each chart configuration
+            const validatedCharts = chartConfig.filter(chart => {
+                if (!chart || !chart.data || !Array.isArray(chart.data) || chart.data.length === 0) {
+                    console.error("Skipping invalid chart:", chart);
+                    return false;
+                }
+                
+                // Check for valid data values and ensure numeric properties
+                try {
+                    // Clean up the data to ensure numeric values are properly formatted
+                    chart.data = chart.data.map(item => {
+                        const cleanItem = { ...item };
+                        // Keep name and group as is
+                        const nameValue = cleanItem.name;
+                        const groupValue = cleanItem.group;
+                        
+                        // Convert other properties to numbers if possible
+                        Object.keys(cleanItem).forEach(key => {
+                            if (key !== 'name' && key !== 'group') {
+                                // Try to convert to number
+                                const numVal = parseFloat(cleanItem[key]);
+                                if (!isNaN(numVal)) {
+                                    cleanItem[key] = numVal;
+                                } else if (cleanItem[key] === null || cleanItem[key] === undefined || cleanItem[key] === '') {
+                                    // Set empty/null values to 0 for charts
+                                    cleanItem[key] = 0;
+                                }
+                            }
+                        });
+                        
+                        // Restore name and group
+                        cleanItem.name = nameValue;
+                        if (groupValue) cleanItem.group = groupValue;
+                        
+                        return cleanItem;
+                    });
+                    
+                    return true;
+                } catch (error) {
+                    console.error("Error validating chart data:", error);
+                    return false;
+                }
+            });
+            
+            if (validatedCharts.length === 0) {
+                console.error("No valid charts found in the configuration");
+                return;
+            }
+            
             // Create a new sheet specifically for statistical analysis
             const sheetCount = Object.keys(sheets).length + 1;
             const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
@@ -223,22 +272,22 @@ const handleSelectionChange = () => {
                     const paddingCols = 1; // Columns between charts
                     
                     // Create each chart with appropriate positioning
-                    chartConfig.forEach((config, index) => {
+                    validatedCharts.forEach((config, index) => {
                         // Calculate row and column position for this chart
                         const row = Math.floor(index / chartsPerRow) * (chartHeight + paddingRows);
                         const col = (index % chartsPerRow) * (chartWidth + paddingCols);
                         
-                        // Ensure we have a deep copy of the chart config
-                        const chartConfigCopy = JSON.parse(JSON.stringify(config));
-                        
                         // Create the chart at the calculated position
-                        dataGridRef.current.createChart(
-                            chartConfigCopy.type || 'bar',
-                            { row, col },
-                            chartConfigCopy
-                        );
-                        
-                        console.log(`Created chart ${index} at position (${row}, ${col})`);
+                        try {
+                            dataGridRef.current.createChart(
+                                config.type || 'bar',
+                                { row, col },
+                                config
+                            );
+                            console.log(`Created chart ${index} at position (${row}, ${col})`);
+                        } catch (error) {
+                            console.error(`Failed to create chart ${index}:`, error);
+                        }
                     });
                 }
                 
@@ -249,7 +298,7 @@ const handleSelectionChange = () => {
                     <div class="py-1"><svg class="fill-current h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/></svg></div>
                     <div>
                         <p class="font-bold">Charts Created</p>
-                        <p class="text-sm">Created ${chartConfig.length} charts in ${sheetName}</p>
+                        <p class="text-sm">Created ${validatedCharts.length} charts in ${sheetName}</p>
                     </div>
                 </div>`;
                 document.body.appendChild(notification);
@@ -261,6 +310,43 @@ const handleSelectionChange = () => {
         
         // Handle single chart case (existing logic)
         if (!chartConfig) return;
+        
+        // Validate single chart data
+        try {
+            if (!chartConfig.data || !Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
+                console.error("Invalid chart data:", chartConfig.data);
+                return;
+            }
+            
+            // Clean up data to ensure numeric values
+            chartConfig.data = chartConfig.data.map(item => {
+                const cleanItem = { ...item };
+                // Keep name and group as is
+                const nameValue = cleanItem.name;
+                const groupValue = cleanItem.group;
+                
+                // Convert other properties to numbers if possible
+                Object.keys(cleanItem).forEach(key => {
+                    if (key !== 'name' && key !== 'group') {
+                        const numVal = parseFloat(cleanItem[key]);
+                        if (!isNaN(numVal)) {
+                            cleanItem[key] = numVal;
+                        } else if (cleanItem[key] === null || cleanItem[key] === undefined || cleanItem[key] === '') {
+                            cleanItem[key] = 0;
+                        }
+                    }
+                });
+                
+                // Restore name and group
+                cleanItem.name = nameValue;
+                if (groupValue) cleanItem.group = groupValue;
+                
+                return cleanItem;
+            });
+        } catch (error) {
+            console.error("Error validating chart data:", error);
+            return;
+        }
         
         console.log("Creating chart:", {
             type: chartConfig?.type,
@@ -306,26 +392,42 @@ const handleSelectionChange = () => {
         setTimeout(() => {
             if (dataGridRef.current) {
                 // Create the chart at the top of the new sheet
-                dataGridRef.current.createChart(
-                    chartConfigCopy.type,
-                    { row: 0, col: 0 }, // Place at the beginning
-                    chartConfigCopy
-                );
-                
-                console.log("Chart created in new sheet:", newSheetId);
-                
-                // Show notification
-                const notification = document.createElement('div');
-                notification.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
-                notification.innerHTML = `<div class="flex items-center">
-                    <div class="py-1"><svg class="fill-current h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/></svg></div>
-                    <div>
-                        <p class="font-bold">Chart Created</p>
-                        <p class="text-sm">Chart has been created in ${sheetName}</p>
-                    </div>
-                </div>`;
-                document.body.appendChild(notification);
-                setTimeout(() => notification.remove(), 4000);
+                try {
+                    dataGridRef.current.createChart(
+                        chartConfigCopy.type,
+                        { row: 0, col: 0 }, // Place at the beginning
+                        chartConfigCopy
+                    );
+                    
+                    console.log("Chart created in new sheet:", newSheetId);
+                    
+                    // Show notification
+                    const notification = document.createElement('div');
+                    notification.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
+                    notification.innerHTML = `<div class="flex items-center">
+                        <div class="py-1"><svg class="fill-current h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/></svg></div>
+                        <div>
+                            <p class="font-bold">Chart Created</p>
+                            <p class="text-sm">Chart has been created in ${sheetName}</p>
+                        </div>
+                    </div>`;
+                    document.body.appendChild(notification);
+                    setTimeout(() => notification.remove(), 4000);
+                } catch (error) {
+                    console.error("Error creating chart:", error);
+                    // Show error notification
+                    const notification = document.createElement('div');
+                    notification.className = 'fixed bottom-4 right-4 bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded shadow-lg z-50';
+                    notification.innerHTML = `<div class="flex items-center">
+                        <div class="py-1"><svg class="fill-current h-6 w-6 text-red-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/></svg></div>
+                        <div>
+                            <p class="font-bold">Error Creating Chart</p>
+                            <p class="text-sm">${error.message || 'Unknown error'}</p>
+                        </div>
+                    </div>`;
+                    document.body.appendChild(notification);
+                    setTimeout(() => notification.remove(), 6000);
+                }
             }
         }, 500);
     };

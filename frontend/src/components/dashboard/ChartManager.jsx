@@ -203,11 +203,30 @@ const ChartManager = {
     const chartData = chartConfig.data;
     const chartTitle = chartConfig.title || 'Chart';
     const chartColors = chartConfig.colors || ['#8884d8', '#82ca9d', '#ffc658', '#ff8042'];
-    const dataKeys = Object.keys(chartData[0] || {}).filter(key => key !== 'name');
+    
+    // Filter out non-name keys and ensure they exist in the data
+    const dataKeys = Object.keys(chartData[0] || {})
+      .filter(key => key !== 'name' && key !== 'group');
     
     if (dataKeys.length === 0) {
+      console.error("No valid data keys found in chart data:", chartData);
       return { data: [], layout: {} };
     }
+    
+    // Validate data - ensure all items have data for every key
+    const validatedData = chartData.map(item => {
+      const newItem = { ...item };
+      dataKeys.forEach(key => {
+        // If the value is not defined or is not a number, set it to null
+        if (newItem[key] === undefined || newItem[key] === '' || isNaN(parseFloat(newItem[key]))) {
+          newItem[key] = null;
+        } else if (typeof newItem[key] !== 'number') {
+          // Try to convert string values to numbers
+          newItem[key] = parseFloat(newItem[key]);
+        }
+      });
+      return newItem;
+    });
     
     const type = chartConfig.type.toLowerCase();
     const data = [];
@@ -222,35 +241,85 @@ const ChartManager = {
       colorway: chartColors
     };
     
+    // Helper function to safely format values for display
+    const formatValue = (value) => {
+      if (value === null || value === undefined || isNaN(value)) {
+        return '';
+      }
+      // Try to format with 1 decimal place
+      try {
+        return value.toFixed(1);
+      } catch (e) {
+        return String(value);
+      }
+    };
+    
     switch (type) {
       case 'bar':
-        dataKeys.forEach((key, index) => {
-          data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[key]),
-            type: 'bar',
-            name: key,
-            marker: {
-              color: chartColors[index % chartColors.length]
-            },
-            text: chartData.map(item => item[key]?.toFixed(1)),
-            textposition: 'auto'
+        // Check if data has group information
+        const hasGroups = validatedData.some(item => item.group !== undefined);
+        
+        if (hasGroups) {
+          // Get unique groups
+          const groupSet = new Set();
+          validatedData.forEach(item => {
+            if (item.group) groupSet.add(item.group);
           });
-        });
+          const uniqueGroups = Array.from(groupSet);
+          
+          // Create bar traces grouped by the group attribute (typically Category)
+          dataKeys.forEach((key, keyIndex) => {
+            uniqueGroups.forEach((groupVal, groupIndex) => {
+              // Filter data for this group
+              const groupData = validatedData.filter(item => item.group === groupVal);
+              
+              // Skip if no data for this group
+              if (groupData.length === 0) return;
+              
+              // Add a trace for this group
+              data.push({
+                x: groupData.map(item => item.name),
+                y: groupData.map(item => item[key]),
+                type: 'bar',
+                name: `${groupVal} - ${key}`,
+                marker: {
+                  color: chartColors[groupIndex % chartColors.length]
+                },
+                text: groupData.map(item => formatValue(item[key])),
+                textposition: 'auto'
+              });
+            });
+          });
+        } else {
+          // Original logic for non-grouped data
+          dataKeys.forEach((key, index) => {
+            data.push({
+              x: validatedData.map(item => item.name),
+              y: validatedData.map(item => item[key]),
+              type: 'bar',
+              name: key,
+              marker: {
+                color: chartColors[index % chartColors.length]
+              },
+              text: validatedData.map(item => formatValue(item[key])),
+              textposition: 'auto'
+            });
+          });
+        }
         break;
         
       case 'column':
         dataKeys.forEach((key, index) => {
           data.push({
-            y: chartData.map(item => item.name),
-            x: chartData.map(item => item[key]),
+            y: validatedData.map(item => item.name),
+            x: validatedData.map(item => item[key]),
             type: 'bar',
             name: key,
             orientation: 'h',
             marker: {
               color: chartColors[index % chartColors.length]
             },
-            text: chartData.map(item => item[key]?.toFixed(1)),
+            text: validatedData.map(item => formatValue(item[key])),
             textposition: 'auto'
           });
         });
@@ -259,15 +328,15 @@ const ChartManager = {
       case 'line':
         dataKeys.forEach((key, index) => {
           data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[key]),
+            x: validatedData.map(item => item.name),
+            y: validatedData.map(item => item[key]),
             type: 'scatter',
             mode: 'lines+markers+text',
             name: key,
             line: {
               color: chartColors[index % chartColors.length]
             },
-            text: chartData.map(item => item[key]?.toFixed(1)),
+            text: validatedData.map(item => formatValue(item[key])),
             textposition: 'top'
           });
         });
@@ -275,8 +344,8 @@ const ChartManager = {
         
       case 'pie':
         data.push({
-          labels: chartData.map(item => item.name),
-          values: chartData.map(item => item[dataKeys[0]]),
+          labels: validatedData.map(item => item.name),
+          values: validatedData.map(item => item[dataKeys[0]]),
           type: 'pie',
           marker: {
             colors: chartColors
@@ -290,8 +359,8 @@ const ChartManager = {
       case 'area':
         dataKeys.forEach((key, index) => {
           data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[key]),
+            x: validatedData.map(item => item.name),
+            y: validatedData.map(item => item[key]),
             type: 'scatter',
             mode: 'lines',
             name: key,
@@ -306,8 +375,8 @@ const ChartManager = {
       case 'radar':
         data.push({
           type: 'scatterpolar',
-          r: chartData.map(item => item[dataKeys[0]]),
-          theta: chartData.map(item => item.name),
+          r: validatedData.map(item => item[dataKeys[0]]),
+          theta: validatedData.map(item => item.name),
           fill: 'toself',
           name: dataKeys[0]
         });
@@ -316,8 +385,8 @@ const ChartManager = {
           dataKeys.slice(1).forEach((key, index) => {
             data.push({
               type: 'scatterpolar',
-              r: chartData.map(item => item[key]),
-              theta: chartData.map(item => item.name),
+              r: validatedData.map(item => item[key]),
+              theta: validatedData.map(item => item.name),
               fill: 'toself',
               name: key,
               marker: {
@@ -330,31 +399,106 @@ const ChartManager = {
         layout.polar = {
           radialaxis: {
             visible: true,
-            range: [0, Math.max(...chartData.flatMap(item => dataKeys.map(key => item[key] || 0))) * 1.2]
+            range: [0, Math.max(...validatedData.flatMap(item => dataKeys.map(key => item[key] || 0))) * 1.2]
           }
         };
         break;
         
       case 'scatter':
-        data.push({
-          x: chartData.map(item => item[dataKeys[0]]),
-          y: chartData.map(item => item[dataKeys[1] || dataKeys[0]]),
-          mode: 'markers',
-          type: 'scatter',
-          marker: {
-            color: chartColors[0],
-            size: 10
-          },
-          text: chartData.map(item => item.name),
-          hoverinfo: 'text+x+y'
-        });
+        // Check if data has group information
+        const hasGroupsScatter = validatedData.some(item => item.group !== undefined);
+        
+        // Check data format - scatter plots from backend may use x,y properties directly
+        const usesDirectXY = validatedData.some(item => item.x !== undefined && item.y !== undefined);
+        
+        if (hasGroupsScatter) {
+          // Get unique groups
+          const groupSet = new Set();
+          validatedData.forEach(item => {
+            if (item.group) groupSet.add(item.group);
+          });
+          const uniqueGroups = Array.from(groupSet);
+          
+          // Create scatter traces grouped by the group attribute
+          uniqueGroups.forEach((groupVal, groupIndex) => {
+            // Filter data for this group
+            const groupData = validatedData.filter(item => item.group === groupVal);
+            
+            // Skip if no data for this group
+            if (groupData.length === 0) return;
+            
+            // Add a trace for this group
+            if (usesDirectXY) {
+              // Use x,y properties directly (backend format)
+              data.push({
+                x: groupData.map(item => item.x),
+                y: groupData.map(item => item.y),
+                mode: 'markers',
+                type: 'scatter',
+                name: groupVal,
+                marker: {
+                  color: chartColors[groupIndex % chartColors.length],
+                  size: 10
+                },
+                text: groupData.map(item => item.name),
+                hoverinfo: 'text+x+y'
+              });
+            } else {
+              // Use dataKeys (standard format)
+              data.push({
+                x: groupData.map(item => item[dataKeys[0]]),
+                y: groupData.map(item => item[dataKeys[1] || dataKeys[0]]),
+                mode: 'markers',
+                type: 'scatter',
+                name: groupVal,
+                marker: {
+                  color: chartColors[groupIndex % chartColors.length],
+                  size: 10
+                },
+                text: groupData.map(item => item.name),
+                hoverinfo: 'text+x+y'
+              });
+            }
+          });
+        } else {
+          // Original logic for non-grouped data
+          if (usesDirectXY) {
+            // Use x,y properties directly (backend format)
+            data.push({
+              x: validatedData.map(item => item.x),
+              y: validatedData.map(item => item.y),
+              mode: 'markers',
+              type: 'scatter',
+              marker: {
+                color: chartColors[0],
+                size: 10
+              },
+              text: validatedData.map(item => item.name),
+              hoverinfo: 'text+x+y'
+            });
+          } else {
+            // Use dataKeys (standard format)
+            data.push({
+              x: validatedData.map(item => item[dataKeys[0]]),
+              y: validatedData.map(item => item[dataKeys[1] || dataKeys[0]]),
+              mode: 'markers',
+              type: 'scatter',
+              marker: {
+                color: chartColors[0],
+                size: 10
+              },
+              text: validatedData.map(item => item.name),
+              hoverinfo: 'text+x+y'
+            });
+          }
+        }
         break;
         
       case 'funnel':
         data.push({
           type: 'funnel',
-          y: chartData.map(item => item.name),
-          x: chartData.map(item => item[dataKeys[0]]),
+          y: validatedData.map(item => item.name),
+          x: validatedData.map(item => item[dataKeys[0]]),
           textinfo: 'value+percent initial',
           marker: {
             color: chartColors
@@ -365,10 +509,10 @@ const ChartManager = {
         
       case 'radialbar':
         // Using Plotly's polar chart as an alternative to RadialBar
-        const values = chartData.map(item => item[dataKeys[0]]);
+        const values = validatedData.map(item => item[dataKeys[0]]);
         const maxValue = Math.max(...values) * 1.2;
         
-        chartData.forEach((item, index) => {
+        validatedData.forEach((item, index) => {
           data.push({
             type: 'scatterpolar',
             r: [item[dataKeys[0]], item[dataKeys[0]]],
@@ -392,9 +536,9 @@ const ChartManager = {
       case 'treemap':
         data.push({
           type: 'treemap',
-          labels: chartData.map(item => item.name),
-          parents: chartData.map(() => ''),
-          values: chartData.map(item => item[dataKeys[0]]),
+          labels: validatedData.map(item => item.name),
+          parents: validatedData.map(() => ''),
+          values: validatedData.map(item => item[dataKeys[0]]),
           textinfo: 'label+value+percent',
           marker: {
             colorway: chartColors
@@ -406,8 +550,8 @@ const ChartManager = {
         // Implement mixed chart types (bar for first data key, line for second)
         if (dataKeys.length > 0) {
           data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[dataKeys[0]]),
+            x: validatedData.map(item => item.name),
+            y: validatedData.map(item => item[dataKeys[0]]),
             type: 'bar',
             name: dataKeys[0],
             marker: {
@@ -418,8 +562,8 @@ const ChartManager = {
         
         if (dataKeys.length > 1) {
           data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[dataKeys[1]]),
+            x: validatedData.map(item => item.name),
+            y: validatedData.map(item => item[dataKeys[1]]),
             type: 'scatter',
             mode: 'lines+markers',
             name: dataKeys[1],
@@ -439,8 +583,8 @@ const ChartManager = {
         
         if (dataKeys.length > 2) {
           data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[dataKeys[2]]),
+            x: validatedData.map(item => item.name),
+            y: validatedData.map(item => item[dataKeys[2]]),
             type: 'scatter',
             mode: 'lines',
             fill: 'tozeroy',
@@ -456,8 +600,8 @@ const ChartManager = {
         // Default to a bar chart
         dataKeys.forEach((key, index) => {
           data.push({
-            x: chartData.map(item => item.name),
-            y: chartData.map(item => item[key]),
+            x: validatedData.map(item => item.name),
+            y: validatedData.map(item => item[key]),
             type: 'bar',
             name: key,
             marker: {
@@ -499,152 +643,37 @@ const ChartManager = {
       chartStyle.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
     }
     
-    // Validate chart config
-    if (!chartConfig || !chartConfig.data || !chartConfig.type) {
-      console.error("Invalid chart configuration:", chartConfig);
-      return (
-        <div 
-          style={chartStyle} 
-          className="p-4"
-          draggable={isSelected}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            if (handleChartDragStart) {
-              handleChartDragStart(e, startCell.row, startCell.col);
-            }
-          }}
-        >
-          Invalid chart configuration
-          {isSelected && (
-            <div 
-              className="chart-resize-handle"
-              style={{
-                position: 'absolute',
-                right: 0,
-                bottom: 0,
-                width: '20px',
-                height: '20px',
-                background: 'rgba(0, 120, 215, 0.9)',
-                cursor: 'nwse-resize',
-                borderTop: '3px solid white',
-                borderLeft: '3px solid white',
-                borderTopLeftRadius: '5px',
-                zIndex: 100
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                handleResizeStart(e);
-              }}
-            />
-          )}
-        </div>
-      );
-    }
-    
-    // Validate chart data
-    if (!Array.isArray(chartConfig.data) || chartConfig.data.length === 0) {
-      console.error("Chart data is missing or empty:", chartConfig.data);
-      return (
-        <div 
-          style={chartStyle} 
-          className="p-4"
-          draggable={isSelected}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            if (handleChartDragStart) {
-              handleChartDragStart(e, startCell.row, startCell.col);
-            }
-          }}
-        >
-          Chart data is missing or empty
-          {isSelected && (
-            <div 
-              className="chart-resize-handle"
-              style={{
-                position: 'absolute',
-                right: 0,
-                bottom: 0,
-                width: '20px',
-                height: '20px',
-                background: 'rgba(0, 120, 215, 0.9)',
-                cursor: 'nwse-resize',
-                borderTop: '3px solid white',
-                borderLeft: '3px solid white',
-                borderTopLeftRadius: '5px',
-                zIndex: 100
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                handleResizeStart(e);
-              }}
-            />
-          )}
-        </div>
-      );
-    }
-    
-    // Get Plotly configuration
-    const { data, layout } = ChartManager.createPlotlyConfig(chartConfig);
-    
-    if (data.length === 0) {
-      console.error("No data found in chart config", chartConfig);
-      return (
-        <div 
-          style={chartStyle} 
-          className="p-4"
-          draggable={isSelected}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            if (handleChartDragStart) {
-              handleChartDragStart(e, startCell.row, startCell.col);
-            }
-          }}
-        >
-          No data values found for chart
-          {isSelected && (
-            <div 
-              className="chart-resize-handle"
-              style={{
-                position: 'absolute',
-                right: 0,
-                bottom: 0,
-                width: '20px',
-                height: '20px',
-                background: 'rgba(0, 120, 215, 0.9)',
-                cursor: 'nwse-resize',
-                borderTop: '3px solid white',
-                borderLeft: '3px solid white',
-                borderTopLeftRadius: '5px',
-                zIndex: 100
-              }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                handleResizeStart(e);
-              }}
-            />
-          )}
-        </div>
-      );
-    }
-    
-    // Configure Plotly options
-    const plotConfig = {
-      displayModeBar: false, // Hide the modebar
-      responsive: true
-    };
-    
-    // Adjust layout dimensions to fit the container
-    const adjustedLayout = {
-      ...layout,
-      width: chartSize.width * CELL_WIDTH - 2,  // Account for borders
-      height: chartSize.height * CELL_HEIGHT - 40,  // Account for header height
-      autosize: true
-    };
-
-    return (
+    // Default resize handle component for reuse
+    const resizeHandle = isSelected && (
       <div 
-        style={chartStyle}
-        className="chart-container"
+        className="chart-resize-handle"
+        style={{
+          position: 'absolute',
+          right: 0,
+          bottom: 0,
+          width: '20px',
+          height: '20px',
+          background: 'rgba(0, 120, 215, 0.9)',
+          cursor: 'nwse-resize',
+          borderTop: '3px solid white',
+          borderLeft: '3px solid white',
+          borderTopLeftRadius: '5px',
+          zIndex: 100
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          if (handleResizeStart) {
+            handleResizeStart(e);
+          }
+        }}
+      />
+    );
+    
+    // Error container for displaying chart errors
+    const ErrorContainer = ({ message, details }) => (
+      <div 
+        style={chartStyle} 
+        className="p-4 flex flex-col"
         draggable={isSelected}
         onDragStart={(e) => {
           e.stopPropagation();
@@ -654,41 +683,111 @@ const ChartManager = {
         }}
       >
         <div className="p-2 border-b bg-gray-50 flex justify-between items-center">
-          <h3 className="text-sm font-semibold">{chartConfig.title || 'Chart'}</h3>
+          <h3 className="text-sm font-semibold text-red-600">Chart Error</h3>
         </div>
-        <div style={{ height: 'calc(100% - 40px)' }}>
-          <Plot
-            data={data}
-            layout={adjustedLayout}
-            config={plotConfig}
-            style={{ width: '100%', height: '100%' }}
-          />
+        <div className="flex-1 p-2 overflow-auto bg-red-50 text-red-800 text-sm">
+          <p className="font-semibold mb-2">{message}</p>
+          {details && <p className="text-xs">{details}</p>}
         </div>
-        
-        {isSelected && (
-          <div 
-            className="chart-resize-handle"
-            style={{
-              position: 'absolute',
-              right: 0,
-              bottom: 0,
-              width: '20px',
-              height: '20px',
-              background: 'rgba(0, 120, 215, 0.9)',
-              cursor: 'nwse-resize',
-              borderTop: '3px solid white',
-              borderLeft: '3px solid white',
-              borderTopLeftRadius: '5px',
-              zIndex: 100
-            }}
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              handleResizeStart(e);
-            }}
-          />
-        )}
+        {resizeHandle}
       </div>
     );
+    
+    // Validate chart config
+    if (!chartConfig) {
+      return <ErrorContainer message="Invalid chart configuration" details="Chart configuration is missing or invalid." />;
+    }
+    
+    // Validate chart type
+    if (!chartConfig.type) {
+      return <ErrorContainer message="Missing chart type" details="The chart configuration does not specify a chart type." />;
+    }
+    
+    // Validate chart data
+    if (!chartConfig.data) {
+      return <ErrorContainer message="Missing chart data" details="The chart data is missing from the configuration." />;
+    }
+    
+    if (!Array.isArray(chartConfig.data)) {
+      return <ErrorContainer 
+        message="Invalid chart data format" 
+        details={`Expected an array of data objects, but got: ${typeof chartConfig.data}`} 
+      />;
+    }
+    
+    if (chartConfig.data.length === 0) {
+      return <ErrorContainer message="Empty chart data" details="The chart data array is empty." />;
+    }
+    
+    // Check if we have valid data points
+    const firstItem = chartConfig.data[0];
+    const dataKeys = Object.keys(firstItem || {}).filter(key => key !== 'name' && key !== 'group');
+    
+    if (dataKeys.length === 0) {
+      return <ErrorContainer 
+        message="No valid data values" 
+        details="The chart data doesn't contain any data fields to plot." 
+      />;
+    }
+    
+    // Get Plotly configuration
+    try {
+      const { data, layout } = ChartManager.createPlotlyConfig(chartConfig);
+      
+      if (data.length === 0) {
+        return <ErrorContainer 
+          message="Failed to create chart" 
+          details="Could not create plot data from the configuration." 
+        />;
+      }
+      
+      // Configure Plotly options
+      const plotConfig = {
+        displayModeBar: false, // Hide the modebar
+        responsive: true
+      };
+      
+      // Adjust layout dimensions to fit the container
+      const adjustedLayout = {
+        ...layout,
+        width: chartSize.width * CELL_WIDTH - 2,  // Account for borders
+        height: chartSize.height * CELL_HEIGHT - 40,  // Account for header height
+        autosize: true
+      };
+
+      return (
+        <div 
+          style={chartStyle}
+          className="chart-container"
+          draggable={isSelected}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            if (handleChartDragStart) {
+              handleChartDragStart(e, startCell.row, startCell.col);
+            }
+          }}
+        >
+          <div className="p-2 border-b bg-gray-50 flex justify-between items-center">
+            <h3 className="text-sm font-semibold">{chartConfig.title || 'Chart'}</h3>
+          </div>
+          <div style={{ height: 'calc(100% - 40px)' }}>
+            <Plot
+              data={data}
+              layout={adjustedLayout}
+              config={plotConfig}
+              style={{ width: '100%', height: '100%' }}
+            />
+          </div>
+          {resizeHandle}
+        </div>
+      );
+    } catch (error) {
+      console.error("Error rendering chart:", error);
+      return <ErrorContainer 
+        message="Error rendering chart" 
+        details={error.message || "An unexpected error occurred while rendering the chart."} 
+      />;
+    }
   },
 
   // Render chart controls (for selected chart)

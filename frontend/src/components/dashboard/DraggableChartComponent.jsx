@@ -221,19 +221,56 @@ const DraggableChartComponent = ({
         
         switch (type) {
             case 'bar':
-                dataKeys.forEach((key, index) => {
-                    data.push({
-                        x: chartData.map(item => item.name),
-                        y: chartData.map(item => item[key]),
-                        type: 'bar',
-                        name: key,
-                        marker: {
-                            color: chartColors[index % chartColors.length]
-                        },
-                        text: chartData.map(item => item[key]?.toFixed(1)),
-                        textposition: 'auto'
+                // Check if data has group information
+                const hasGroups = chartData.some(item => item.group !== undefined);
+                
+                if (hasGroups) {
+                    // Get unique groups
+                    const groupSet = new Set();
+                    chartData.forEach(item => {
+                        if (item.group) groupSet.add(item.group);
                     });
-                });
+                    const uniqueGroups = Array.from(groupSet);
+                    
+                    // Create bar traces grouped by the group attribute (typically Category)
+                    dataKeys.forEach((key, keyIndex) => {
+                        uniqueGroups.forEach((groupVal, groupIndex) => {
+                            // Filter data for this group
+                            const groupData = chartData.filter(item => item.group === groupVal);
+                            
+                            // Skip if no data for this group
+                            if (groupData.length === 0) return;
+                            
+                            // Add a trace for this group
+                            data.push({
+                                x: groupData.map(item => item.name),
+                                y: groupData.map(item => item[key]),
+                                type: 'bar',
+                                name: `${groupVal} - ${key}`,
+                                marker: {
+                                    color: chartColors[groupIndex % chartColors.length]
+                                },
+                                text: groupData.map(item => item[key]?.toFixed(1)),
+                                textposition: 'auto'
+                            });
+                        });
+                    });
+                } else {
+                    // Original logic for non-grouped data
+                    dataKeys.forEach((key, index) => {
+                        data.push({
+                            x: chartData.map(item => item.name),
+                            y: chartData.map(item => item[key]),
+                            type: 'bar',
+                            name: key,
+                            marker: {
+                                color: chartColors[index % chartColors.length]
+                            },
+                            text: chartData.map(item => item[key]?.toFixed(1)),
+                            textposition: 'auto'
+                        });
+                    });
+                }
                 break;
                 
             case 'column':
@@ -333,18 +370,93 @@ const DraggableChartComponent = ({
                 break;
                 
             case 'scatter':
-                data.push({
-                    x: chartData.map(item => item[dataKeys[0]]),
-                    y: chartData.map(item => item[dataKeys[1] || dataKeys[0]]),
-                    mode: 'markers',
-                    type: 'scatter',
-                    marker: {
-                        color: chartColors[0],
-                        size: 10
-                    },
-                    text: chartData.map(item => item.name),
-                    hoverinfo: 'text+x+y'
-                });
+                // Check if data has group information
+                const hasGroupsScatter = chartData.some(item => item.group !== undefined);
+                
+                // Check data format - scatter plots from backend may use x,y properties directly
+                const usesDirectXY = chartData.some(item => item.x !== undefined && item.y !== undefined);
+                
+                if (hasGroupsScatter) {
+                    // Get unique groups
+                    const groupSet = new Set();
+                    chartData.forEach(item => {
+                        if (item.group) groupSet.add(item.group);
+                    });
+                    const uniqueGroups = Array.from(groupSet);
+                    
+                    // Create scatter traces grouped by the group attribute
+                    uniqueGroups.forEach((groupVal, groupIndex) => {
+                        // Filter data for this group
+                        const groupData = chartData.filter(item => item.group === groupVal);
+                        
+                        // Skip if no data for this group
+                        if (groupData.length === 0) return;
+                        
+                        // Add a trace for this group
+                        if (usesDirectXY) {
+                            // Use x,y properties directly (backend format)
+                            data.push({
+                                x: groupData.map(item => item.x),
+                                y: groupData.map(item => item.y),
+                                mode: 'markers',
+                                type: 'scatter',
+                                name: groupVal,
+                                marker: {
+                                    color: chartColors[groupIndex % chartColors.length],
+                                    size: 10
+                                },
+                                text: groupData.map(item => item.name),
+                                hoverinfo: 'text+x+y'
+                            });
+                        } else {
+                            // Use dataKeys (standard format)
+                            data.push({
+                                x: groupData.map(item => item[dataKeys[0]]),
+                                y: groupData.map(item => item[dataKeys[1] || dataKeys[0]]),
+                                mode: 'markers',
+                                type: 'scatter',
+                                name: groupVal,
+                                marker: {
+                                    color: chartColors[groupIndex % chartColors.length],
+                                    size: 10
+                                },
+                                text: groupData.map(item => item.name),
+                                hoverinfo: 'text+x+y'
+                            });
+                        }
+                    });
+                } else {
+                    // Original logic for non-grouped data
+                    if (usesDirectXY) {
+                        // Use x,y properties directly (backend format)
+                        data.push({
+                            x: chartData.map(item => item.x),
+                            y: chartData.map(item => item.y),
+                            mode: 'markers',
+                            type: 'scatter',
+                            marker: {
+                                color: chartColors[0],
+                                size: 10
+                            },
+                            text: chartData.map(item => item.name),
+                            hoverinfo: 'text+x+y'
+                        });
+                    } else {
+                        // Use dataKeys (standard format)
+                        data.push({
+                            x: chartData.map(item => item[dataKeys[0]]),
+                            y: chartData.map(item => item[dataKeys[1] || dataKeys[0]]),
+                            mode: 'markers',
+                            type: 'scatter',
+                            marker: {
+                                color: chartColors[0],
+                                size: 10
+                            },
+                            text: chartData.map(item => item.name),
+                            hoverinfo: 'text+x+y'
+                        });
+                    }
+                }
                 break;
                 
             case 'funnel':
