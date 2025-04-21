@@ -187,6 +187,9 @@ const handleSelectionChange = () => {
             const sheetCount = Object.keys(sheets).length + 1;
             const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
             
+            // Use a more descriptive name
+            const sheetName = `Analysis ${sheetCount}`;
+            
             // Create initial empty data for the new sheet (more rows for multiple charts)
             // Ensure we have enough rows and columns for multiple charts
             const emptyData = Array(100).fill().map(() => Array(20).fill(''));
@@ -196,7 +199,7 @@ const handleSelectionChange = () => {
                 ...sheets,
                 [newSheetId]: {
                     id: newSheetId,
-                    name: `Sheet ${sheetCount}`, // Name to indicate it's an analysis sheet
+                    name: sheetName,
                     data: emptyData,
                     activeCell: { row: 0, col: 0 },
                     cellFormats: {}
@@ -238,6 +241,19 @@ const handleSelectionChange = () => {
                         console.log(`Created chart ${index} at position (${row}, ${col})`);
                     });
                 }
+                
+                // Show notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
+                notification.innerHTML = `<div class="flex items-center">
+                    <div class="py-1"><svg class="fill-current h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/></svg></div>
+                    <div>
+                        <p class="font-bold">Charts Created</p>
+                        <p class="text-sm">Created ${chartConfig.length} charts in ${sheetName}</p>
+                    </div>
+                </div>`;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 4000);
             }, 500);
             
             return;
@@ -249,82 +265,69 @@ const handleSelectionChange = () => {
         console.log("Creating chart:", {
             type: chartConfig?.type,
             dataPoints: chartConfig?.data?.length,
-            source: sourceSheetId || activeSheetId,
-            target: targetSheetId || "New Sheet" // Now defaults to new sheet
+            source: sourceSheetId || activeSheetId
         });
         
         // Create a deep copy of the chart configuration
         const chartConfigCopy = JSON.parse(JSON.stringify(chartConfig));
         
-        // If targetSheetId is specified, create chart in that sheet
-        if (targetSheetId && sheets[targetSheetId]) {
-            // If the target sheet is different from active, switch to it with a timeout
-            if (targetSheetId !== activeSheetId) {
-                // First switch to the target sheet
-                onSheetChange(targetSheetId);
-                
-                // Then wait for the sheet change to take effect
-                setTimeout(() => {
-                    if (dataGridRef.current) {
-                        // Get target cell in the new sheet
-                        const targetCell = sheets[targetSheetId]?.activeCell || { row: 0, col: 0 };
-                        
-                        // Create the chart with the preserved configuration
-                        dataGridRef.current.createChart(
-                            chartConfigCopy.type, 
-                            targetCell, 
-                            chartConfigCopy
-                        );
-                    }
-                }, 500); // Timeout for reliable sheet switching
-            } else {
-                // Same sheet, create chart immediately
-                const targetCell = sheets[targetSheetId]?.activeCell || { row: 0, col: 0 };
-                dataGridRef.current.createChart(chartConfigCopy.type, targetCell, chartConfigCopy);
+        // Always create a new sheet for the chart
+        const sheetCount = Object.keys(sheets).length + 1;
+        const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
+        
+        // Create a more descriptive name based on chart type
+        const chartTypeName = chartConfigCopy.type?.charAt(0).toUpperCase() + chartConfigCopy.type?.slice(1) || 'Chart';
+        const chartTitle = chartConfigCopy.title || chartTypeName;
+        const sheetName = `${chartTitle} ${sheetCount}`.substring(0, 20); // Limit length
+        
+        // Create initial empty data for the new sheet
+        // Ensure we have enough rows and columns for the chart (default 50x10)
+        const emptyData = Array(50).fill().map(() => Array(10).fill(''));
+        
+        // Create the new sheet
+        const newSheets = {
+            ...sheets,
+            [newSheetId]: {
+                id: newSheetId,
+                name: sheetName,
+                data: emptyData,
+                activeCell: { row: 0, col: 0 }, // Place chart at the beginning of the sheet
+                cellFormats: {}
             }
-        } 
-        // No target sheet specified - create a new sheet for the chart
-        else {
-            // Create a new sheet for the chart
-            const sheetCount = Object.keys(sheets).length + 1;
-            const newSheetId = `sheet${Date.now()}`; // Use timestamp for unique ID
-            
-            // Create initial empty data for the new sheet
-            // Ensure we have enough rows and columns for the chart (default 50x10)
-            const emptyData = Array(50).fill().map(() => Array(10).fill(''));
-            
-            // Create the new sheet
-            const newSheets = {
-                ...sheets,
-                [newSheetId]: {
-                    id: newSheetId,
-                    name: `Sheet ${sheetCount}`, // Name to indicate it's a chart sheet
-                    data: emptyData,
-                    activeCell: { row: 0, col: 0 }, // Place chart at the beginning of the sheet
-                    cellFormats: {}
-                }
-            };
-            
-            // First update sheets with the new sheet
-            onUpdateSheetData(newSheets);
-            
-            // Switch to the new sheet
-            onSheetChange(newSheetId);
-            
-            // Add a small delay to ensure the sheet switch is complete before creating the chart
-            setTimeout(() => {
-                if (dataGridRef.current) {
-                    // Create the chart at the top of the new sheet
-                    dataGridRef.current.createChart(
-                        chartConfigCopy.type,
-                        { row: 0, col: 0 }, // Place at the beginning
-                        chartConfigCopy
-                    );
-                    
-                    console.log("Chart created in new sheet:", newSheetId);
-                }
-            }, 500);
-        }
+        };
+        
+        // First update sheets with the new sheet
+        onUpdateSheetData(newSheets);
+        
+        // Switch to the new sheet
+        onSheetChange(newSheetId);
+        
+        // Add a small delay to ensure the sheet switch is complete before creating the chart
+        setTimeout(() => {
+            if (dataGridRef.current) {
+                // Create the chart at the top of the new sheet
+                dataGridRef.current.createChart(
+                    chartConfigCopy.type,
+                    { row: 0, col: 0 }, // Place at the beginning
+                    chartConfigCopy
+                );
+                
+                console.log("Chart created in new sheet:", newSheetId);
+                
+                // Show notification
+                const notification = document.createElement('div');
+                notification.className = 'fixed bottom-4 right-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded shadow-lg z-50';
+                notification.innerHTML = `<div class="flex items-center">
+                    <div class="py-1"><svg class="fill-current h-6 w-6 text-green-500 mr-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM9 11V9h2v6H9v-4zm0-6h2v2H9V5z"/></svg></div>
+                    <div>
+                        <p class="font-bold">Chart Created</p>
+                        <p class="text-sm">Chart has been created in ${sheetName}</p>
+                    </div>
+                </div>`;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 4000);
+            }
+        }, 500);
     };
     
 
