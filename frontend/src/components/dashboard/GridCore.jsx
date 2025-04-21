@@ -1,6 +1,8 @@
 import React from 'react';
 
 // Constants
+const x=10;
+console.log(x);
 const CELL_WIDTH = 120;
 const CELL_HEIGHT = 32;
 const MIN_VISIBLE_ROWS = 50;
