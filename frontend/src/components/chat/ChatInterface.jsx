@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
-import ChartMessage from './ChartMessage';
 
 const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, activeSheetId }) => {
     const [messages, setMessages] = useState([]);
@@ -533,7 +532,11 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
             if (responseData.operation === "statistics" && Array.isArray(responseData.chartConfig) && onChartRequest) {
                 // Handle statistical analysis with multiple charts
                 console.log("Processing statistical analysis with", responseData.chartConfig.length, "charts");
-                onChartRequest(responseData.chartConfig, responseData.sourceSheetId, explicitTargetSheetId || responseData.targetSheetId);
+                // Always create new sheet for statistical charts
+                onChartRequest(responseData.chartConfig, responseData.sourceSheetId, null);
+                
+                // Show notification for statistical analysis
+                showChartNotification("statistical", `${responseData.chartConfig.length} charts`);
             } else if (responseData.operation === "transformation" && responseData.transformedData && onChartRequest) {
                 // Handle data transformation with operation field
                 const emptySheetId = findFirstEmptySheet();
@@ -545,18 +548,25 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                 };
                 
                 onChartRequest(null, null, emptySheetId || null, parsedFile);
+                
+                // Show notification for data transformation
+                showChartNotification("transformation", "Data transformation");
             } else if (responseData.chartConfig && onChartRequest) {
                 // Handle single chart case (with or without operation field)
-                const finalTargetSheetId = isChartRequest && !explicitTargetSheetId ? null : responseData.targetSheetId;
-                
+                // Always use null as targetSheetId to force new sheet creation
                 console.log("Calling onChartRequest with:", {
                     chartType: responseData.chartConfig.type,
                     sourceSheetId: responseData.sourceSheetId,
-                    targetSheetId: finalTargetSheetId,
-                    isNewSheet: finalTargetSheetId === null
+                    targetSheetId: null, // Force new sheet creation
+                    isNewSheet: true
                 });
                 
-                onChartRequest(responseData.chartConfig, responseData.sourceSheetId, finalTargetSheetId);
+                // Show chart notification
+                const chartType = responseData.chartConfig.type || "chart";
+                const chartTitle = responseData.chartConfig.title || `${chartType.charAt(0).toUpperCase() + chartType.slice(1)}`;
+                showChartNotification(chartType, chartTitle);
+                
+                onChartRequest(responseData.chartConfig, responseData.sourceSheetId, null);
             } else if (responseData.transformedData && onChartRequest) {
                 // Handle legacy transformedData (without operation field)
                 const emptySheetId = findFirstEmptySheet();
@@ -602,6 +612,37 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
         );
     };
 
+    // Add this function after the handleSendMessage function
+    const showChartNotification = (chartType, chartTitle) => {
+        // Create a notification that appears briefly in the chat interface
+        const messageContainer = document.querySelector('.message-container');
+        if (!messageContainer) return;
+        
+        const notification = document.createElement('div');
+        notification.className = 'p-3 mb-2 bg-indigo-100 text-indigo-800 rounded-lg text-sm animate-pulse';
+        
+        const formattedType = chartType ? chartType.charAt(0).toUpperCase() + chartType.slice(1) : 'Chart';
+        const title = chartTitle || formattedType;
+        
+        notification.innerHTML = `
+            <div class="flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v12a1 1 0 01-1 1h-12a1 1 0 01-1-1V3zm2 1v10h10V4H5z" clip-rule="evenodd" />
+                    <path fill-rule="evenodd" d="M16 14V6h-1v8h1zm-2-4h-4V9h4v1zm-6 0H4V9h4v1z" clip-rule="evenodd" />
+                </svg>
+                <span class="font-medium">Creating ${title} in new sheet...</span>
+            </div>
+        `;
+        
+        messageContainer.appendChild(notification);
+        
+        // Remove after 2 seconds
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => notification.remove(), 500);
+        }, 2000);
+    };
+
     return (
         <div 
             className="flex flex-col h-[600px] border rounded-lg shadow-md bg-white chat-container"
@@ -626,10 +667,15 @@ const ChatInterface = ({ recordId, data, activeCell, onChartRequest, sheets, act
                         }`}>
                             <p className="whitespace-pre-wrap chat-message selectable">{msg.text}</p>
                             {msg.chartConfig && (
-                                <ChartMessage 
-                                    data={msg.chartData || data} 
-                                    chartConfig={msg.chartConfig} 
-                                />
+                                <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                                    <div className="flex items-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                                            <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" />
+                                            <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" />
+                                        </svg>
+                                        <p className="font-medium text-blue-700">Chart created in a new sheet</p>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -729,6 +775,11 @@ style.textContent = `
     ::-moz-selection {
         background: rgba(79, 70, 229, 0.3) !important;
         color: inherit !important;
+    }
+    
+    .fade-out {
+        opacity: 0;
+        transition: opacity 0.5s;
     }
 `;
 document.head.appendChild(style);
