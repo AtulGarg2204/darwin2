@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-  AreaChart, Area, RadarChart, PolarGrid, PolarAngleAxis, 
-  PolarRadiusAxis, Radar,
-} from 'recharts';
+import Plot from 'react-plotly.js';
 
 // Constants
 const CELL_WIDTH = 120;
@@ -199,6 +194,282 @@ const ChartManager = {
     setData(newData);
   },
 
+  // Creates Plotly data and layout configuration
+  createPlotlyConfig: (chartConfig) => {
+    if (!chartConfig || !chartConfig.data || chartConfig.data.length === 0) {
+      return { data: [], layout: {} };
+    }
+    
+    const chartData = chartConfig.data;
+    const chartTitle = chartConfig.title || 'Chart';
+    const chartColors = chartConfig.colors || ['#8884d8', '#82ca9d', '#ffc658', '#ff8042'];
+    const dataKeys = Object.keys(chartData[0] || {}).filter(key => key !== 'name');
+    
+    if (dataKeys.length === 0) {
+      return { data: [], layout: {} };
+    }
+    
+    const type = chartConfig.type.toLowerCase();
+    const data = [];
+    const layout = {
+      autosize: true,
+      title: chartTitle,
+      margin: { l: 50, r: 30, b: 50, t: 50, pad: 4 },
+      paper_bgcolor: 'white',
+      plot_bgcolor: 'white',
+      font: { size: 10 },
+      showlegend: true,
+      colorway: chartColors
+    };
+    
+    switch (type) {
+      case 'bar':
+        dataKeys.forEach((key, index) => {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[key]),
+            type: 'bar',
+            name: key,
+            marker: {
+              color: chartColors[index % chartColors.length]
+            },
+            text: chartData.map(item => item[key]?.toFixed(1)),
+            textposition: 'auto'
+          });
+        });
+        break;
+        
+      case 'column':
+        dataKeys.forEach((key, index) => {
+          data.push({
+            y: chartData.map(item => item.name),
+            x: chartData.map(item => item[key]),
+            type: 'bar',
+            name: key,
+            orientation: 'h',
+            marker: {
+              color: chartColors[index % chartColors.length]
+            },
+            text: chartData.map(item => item[key]?.toFixed(1)),
+            textposition: 'auto'
+          });
+        });
+        break;
+        
+      case 'line':
+        dataKeys.forEach((key, index) => {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[key]),
+            type: 'scatter',
+            mode: 'lines+markers+text',
+            name: key,
+            line: {
+              color: chartColors[index % chartColors.length]
+            },
+            text: chartData.map(item => item[key]?.toFixed(1)),
+            textposition: 'top'
+          });
+        });
+        break;
+        
+      case 'pie':
+        data.push({
+          labels: chartData.map(item => item.name),
+          values: chartData.map(item => item[dataKeys[0]]),
+          type: 'pie',
+          marker: {
+            colors: chartColors
+          },
+          textinfo: 'label+percent',
+          insidetextorientation: 'radial'
+        });
+        layout.showlegend = true;
+        break;
+        
+      case 'area':
+        dataKeys.forEach((key, index) => {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[key]),
+            type: 'scatter',
+            mode: 'lines',
+            name: key,
+            fill: 'tozeroy',
+            line: {
+              color: chartColors[index % chartColors.length]
+            }
+          });
+        });
+        break;
+        
+      case 'radar':
+        data.push({
+          type: 'scatterpolar',
+          r: chartData.map(item => item[dataKeys[0]]),
+          theta: chartData.map(item => item.name),
+          fill: 'toself',
+          name: dataKeys[0]
+        });
+        
+        if (dataKeys.length > 1) {
+          dataKeys.slice(1).forEach((key, index) => {
+            data.push({
+              type: 'scatterpolar',
+              r: chartData.map(item => item[key]),
+              theta: chartData.map(item => item.name),
+              fill: 'toself',
+              name: key,
+              marker: {
+                color: chartColors[(index + 1) % chartColors.length]
+              }
+            });
+          });
+        }
+        
+        layout.polar = {
+          radialaxis: {
+            visible: true,
+            range: [0, Math.max(...chartData.flatMap(item => dataKeys.map(key => item[key] || 0))) * 1.2]
+          }
+        };
+        break;
+        
+      case 'scatter':
+        data.push({
+          x: chartData.map(item => item[dataKeys[0]]),
+          y: chartData.map(item => item[dataKeys[1] || dataKeys[0]]),
+          mode: 'markers',
+          type: 'scatter',
+          marker: {
+            color: chartColors[0],
+            size: 10
+          },
+          text: chartData.map(item => item.name),
+          hoverinfo: 'text+x+y'
+        });
+        break;
+        
+      case 'funnel':
+        data.push({
+          type: 'funnel',
+          y: chartData.map(item => item.name),
+          x: chartData.map(item => item[dataKeys[0]]),
+          textinfo: 'value+percent initial',
+          marker: {
+            color: chartColors
+          }
+        });
+        layout.funnelmode = 'stack';
+        break;
+        
+      case 'radialbar':
+        // Using Plotly's polar chart as an alternative to RadialBar
+        const values = chartData.map(item => item[dataKeys[0]]);
+        const maxValue = Math.max(...values) * 1.2;
+        
+        chartData.forEach((item, index) => {
+          data.push({
+            type: 'scatterpolar',
+            r: [item[dataKeys[0]], item[dataKeys[0]]],
+            theta: [0, 90], // Partial circle for each item
+            name: item.name,
+            marker: {
+              color: chartColors[index % chartColors.length]
+            },
+            fill: 'toself'
+          });
+        });
+        
+        layout.polar = {
+          radialaxis: {
+            visible: true,
+            range: [0, maxValue]
+          }
+        };
+        break;
+        
+      case 'treemap':
+        data.push({
+          type: 'treemap',
+          labels: chartData.map(item => item.name),
+          parents: chartData.map(() => ''),
+          values: chartData.map(item => item[dataKeys[0]]),
+          textinfo: 'label+value+percent',
+          marker: {
+            colorway: chartColors
+          }
+        });
+        break;
+        
+      case 'composed':
+        // Implement mixed chart types (bar for first data key, line for second)
+        if (dataKeys.length > 0) {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[dataKeys[0]]),
+            type: 'bar',
+            name: dataKeys[0],
+            marker: {
+              color: chartColors[0]
+            }
+          });
+        }
+        
+        if (dataKeys.length > 1) {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[dataKeys[1]]),
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: dataKeys[1],
+            yaxis: 'y2',
+            line: {
+              color: chartColors[1]
+            }
+          });
+          
+          // Setup secondary y-axis
+          layout.yaxis2 = {
+            title: dataKeys[1],
+            overlaying: 'y',
+            side: 'right'
+          };
+        }
+        
+        if (dataKeys.length > 2) {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[dataKeys[2]]),
+            type: 'scatter',
+            mode: 'lines',
+            fill: 'tozeroy',
+            name: dataKeys[2],
+            line: {
+              color: chartColors[2]
+            }
+          });
+        }
+        break;
+        
+      default:
+        // Default to a bar chart
+        dataKeys.forEach((key, index) => {
+          data.push({
+            x: chartData.map(item => item.name),
+            y: chartData.map(item => item[key]),
+            type: 'bar',
+            name: key,
+            marker: {
+              color: chartColors[index % chartColors.length]
+            }
+          });
+        });
+    }
+    
+    return { data, layout };
+  },
+
   // Chart rendering component
   renderChart: (type, startCell, chartConfig, chartSizes, selectedChart, handleResizeStart, handleChartDragStart) => {
     // Get chart size (use custom size or size from config or default)
@@ -222,6 +493,12 @@ const ChartManager = {
       selectedChart.row === startCell.row && 
       selectedChart.col === startCell.col;
     
+    if (isSelected) {
+      chartStyle.border = '2px solid #3b82f6';
+      chartStyle.zIndex = 100;
+      chartStyle.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.1)';
+    }
+    
     // Validate chart config
     if (!chartConfig || !chartConfig.data || !chartConfig.type) {
       console.error("Invalid chart configuration:", chartConfig);
@@ -232,8 +509,6 @@ const ChartManager = {
           draggable={isSelected}
           onDragStart={(e) => {
             e.stopPropagation();
-            console.log("Starting drag from invalid chart");
-            
             if (handleChartDragStart) {
               handleChartDragStart(e, startCell.row, startCell.col);
             }
@@ -241,41 +516,26 @@ const ChartManager = {
         >
           Invalid chart configuration
           {isSelected && (
-            <>
-              <div 
-                className="chart-resize-handle"
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  bottom: 0,
-                  width: '20px',
-                  height: '20px',
-                  background: 'rgba(0, 120, 215, 0.9)',
-                  cursor: 'nwse-resize',
-                  borderTop: '3px solid white',
-                  borderLeft: '3px solid white',
-                  borderTopLeftRadius: '5px',
-                  zIndex: 100
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleResizeStart(e);
-                }}
-              />
-              <div 
-                className="chart-selection-border"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  border: '2px solid #0078d7',
-                  pointerEvents: 'none',
-                  zIndex: 50
-                }}
-              />
-            </>
+            <div 
+              className="chart-resize-handle"
+              style={{
+                position: 'absolute',
+                right: 0,
+                bottom: 0,
+                width: '20px',
+                height: '20px',
+                background: 'rgba(0, 120, 215, 0.9)',
+                cursor: 'nwse-resize',
+                borderTop: '3px solid white',
+                borderLeft: '3px solid white',
+                borderTopLeftRadius: '5px',
+                zIndex: 100
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                handleResizeStart(e);
+              }}
+            />
           )}
         </div>
       );
@@ -291,8 +551,6 @@ const ChartManager = {
           draggable={isSelected}
           onDragStart={(e) => {
             e.stopPropagation();
-            console.log("Starting drag from empty chart");
-            
             if (handleChartDragStart) {
               handleChartDragStart(e, startCell.row, startCell.col);
             }
@@ -300,56 +558,36 @@ const ChartManager = {
         >
           Chart data is missing or empty
           {isSelected && (
-            <>
-              <div 
-                className="chart-resize-handle"
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  bottom: 0,
-                  width: '20px',
-                  height: '20px',
-                  background: 'rgba(0, 120, 215, 0.9)',
-                  cursor: 'nwse-resize',
-                  borderTop: '3px solid white',
-                  borderLeft: '3px solid white',
-                  borderTopLeftRadius: '5px',
-                  zIndex: 100
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleResizeStart(e);
-                }}
-              />
-              <div 
-                className="chart-selection-border"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  border: '2px solid #0078d7',
-                  pointerEvents: 'none',
-                  zIndex: 50
-                }}
-              />
-            </>
+            <div 
+              className="chart-resize-handle"
+              style={{
+                position: 'absolute',
+                right: 0,
+                bottom: 0,
+                width: '20px',
+                height: '20px',
+                background: 'rgba(0, 120, 215, 0.9)',
+                cursor: 'nwse-resize',
+                borderTop: '3px solid white',
+                borderLeft: '3px solid white',
+                borderTopLeftRadius: '5px',
+                zIndex: 100
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                handleResizeStart(e);
+              }}
+            />
           )}
         </div>
       );
     }
     
-    // Extract data and settings from the chart config
-    const chartData = chartConfig.data;
-    const chartTitle = chartConfig.title || 'Chart';
-    const chartColors = chartConfig.colors || ['#8884d8', '#82ca9d', '#ffc658', '#ff8042'];
+    // Get Plotly configuration
+    const { data, layout } = ChartManager.createPlotlyConfig(chartConfig);
     
-    // Get data keys (excluding 'name')
-    const dataKeys = Object.keys(chartData[0] || {}).filter(key => key !== 'name');
-    
-    if (dataKeys.length === 0) {
-      console.error("No data keys found in chart data");
+    if (data.length === 0) {
+      console.error("No data found in chart config", chartConfig);
       return (
         <div 
           style={chartStyle} 
@@ -357,8 +595,6 @@ const ChartManager = {
           draggable={isSelected}
           onDragStart={(e) => {
             e.stopPropagation();
-            console.log("Starting drag from no-keys chart");
-            
             if (handleChartDragStart) {
               handleChartDragStart(e, startCell.row, startCell.col);
             }
@@ -366,322 +602,69 @@ const ChartManager = {
         >
           No data values found for chart
           {isSelected && (
-            <>
-              <div 
-                className="chart-resize-handle"
-                style={{
-                  position: 'absolute',
-                  right: 0,
-                  bottom: 0,
-                  width: '20px',
-                  height: '20px',
-                  background: 'rgba(0, 120, 215, 0.9)',
-                  cursor: 'nwse-resize',
-                  borderTop: '3px solid white',
-                  borderLeft: '3px solid white',
-                  borderTopLeftRadius: '5px',
-                  zIndex: 100
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  handleResizeStart(e);
-                }}
-              />
-              <div 
-                className="chart-selection-border"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  border: '2px solid #0078d7',
-                  pointerEvents: 'none',
-                  zIndex: 50
-                }}
-              />
-            </>
+            <div 
+              className="chart-resize-handle"
+              style={{
+                position: 'absolute',
+                right: 0,
+                bottom: 0,
+                width: '20px',
+                height: '20px',
+                background: 'rgba(0, 120, 215, 0.9)',
+                cursor: 'nwse-resize',
+                borderTop: '3px solid white',
+                borderLeft: '3px solid white',
+                borderTopLeftRadius: '5px',
+                zIndex: 100
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                handleResizeStart(e);
+              }}
+            />
           )}
         </div>
       );
     }
     
-    // Render the appropriate chart type based on the configuration
-    let chartContent;
-    switch (chartConfig.type.toLowerCase()) {
-      case 'bar':
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {dataKeys.map((key, index) => (
-                  <Bar 
-                    key={key} 
-                    dataKey={key} 
-                    fill={chartColors[index % chartColors.length]} 
-                    name={key}
-                    label={{
-                      position: 'top',
-                      formatter: (value) => (typeof value === 'number' ? value.toFixed(1) : value),
-                      fill: '#666',
-                      fontSize: 12
-                    }}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </>
-        );
-        break;
-        
-      case 'column':
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <BarChart 
-                data={chartData}
-                layout="vertical"
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={80}
-                />
-                <Tooltip />
-                <Legend />
-                {dataKeys.map((key, index) => (
-                  <Bar 
-                    key={key} 
-                    dataKey={key} 
-                    fill={chartColors[index % chartColors.length]} 
-                    name={key}
-                    label={{
-                      position: 'right',
-                      formatter: (value) => value.toFixed(1),
-                      fill: '#666',
-                      fontSize: 12
-                    }}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </>
-        );
-        break;
+    // Configure Plotly options
+    const plotConfig = {
+      displayModeBar: false, // Hide the modebar
+      responsive: true
+    };
+    
+    // Adjust layout dimensions to fit the container
+    const adjustedLayout = {
+      ...layout,
+      width: chartSize.width * CELL_WIDTH - 2,  // Account for borders
+      height: chartSize.height * CELL_HEIGHT - 40,  // Account for header height
+      autosize: true
+    };
 
-      case 'line':
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {dataKeys.map((key, index) => (
-                  <Line 
-                    key={key} 
-                    type="monotone" 
-                    dataKey={key} 
-                    stroke={chartColors[index % chartColors.length]} 
-                    name={key}
-                    label={{
-                      position: 'top',
-                      formatter: (value) => value.toFixed(1),
-                      fill: '#666',
-                      fontSize: 12
-                    }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </>
-        );
-        break;
-        
-      case 'pie':
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  dataKey={dataKeys[0]}
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  fill="#8884d8"
-                  label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </>
-        );
-        break;
-        
-      case 'area':
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <AreaChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {dataKeys.map((key, index) => (
-                  <Area 
-                    key={key} 
-                    type="monotone" 
-                    dataKey={key} 
-                    fill={chartColors[index % chartColors.length]} 
-                    stroke={chartColors[index % chartColors.length]} 
-                    fillOpacity={0.6}
-                    name={key}
-                    label={{
-                      position: 'top',
-                      formatter: (value) => value.toFixed(1),
-                      fill: '#666',
-                      fontSize: 12
-                    }}
-                  />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
-          </>
-        );
-        break;
-        
-      case 'radar':
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle}</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <RadarChart cx="50%" cy="50%" outerRadius={80} data={chartData}>
-                <PolarGrid />
-                <PolarAngleAxis dataKey="name" />
-                <PolarRadiusAxis />
-                {dataKeys.map((key, index) => (
-                  <Radar
-                    key={key}
-                    name={key}
-                    dataKey={key}
-                    stroke={chartColors[index % chartColors.length]}
-                    fill={chartColors[index % chartColors.length]}
-                    fillOpacity={0.6}
-                    label={{
-                      formatter: (value) => value.toFixed(1),
-                      fill: '#666',
-                      fontSize: 12,
-                      position: 'outside'
-                    }}
-                  />
-                ))}
-                <Legend />
-                <Tooltip />
-              </RadarChart>
-            </ResponsiveContainer>
-          </>
-        );
-        break;
-        
-      // Default to bar chart if type is not recognized
-      default:
-        chartContent = (
-          <>
-            <h3 className="text-sm font-semibold m-2">{chartTitle} (Bar Chart)</h3>
-            <ResponsiveContainer width="100%" height="90%">
-              <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                {dataKeys.map((key, index) => (
-                  <Bar 
-                    key={key} 
-                    dataKey={key} 
-                    fill={chartColors[index % chartColors.length]} 
-                    name={key}
-                    label={{
-                      position: 'top',
-                      formatter: (value) => value.toFixed(1),
-                      fill: '#666',
-                      fontSize: 12
-                    }}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </>
-        );
-    }
-  
-    // Return the chart with resize handle if selected
     return (
       <div 
-        style={chartStyle} 
+        style={chartStyle}
         className="chart-container"
         draggable={isSelected}
         onDragStart={(e) => {
           e.stopPropagation();
-          console.log("CHART DRAG START", startCell.row, startCell.col);
-          
-          // Set data for drag
-          e.dataTransfer.setData("text/plain", `${startCell.row},${startCell.col}`);
-          e.dataTransfer.effectAllowed = "move";
-          
-          // Call parent handler
           if (handleChartDragStart) {
             handleChartDragStart(e, startCell.row, startCell.col);
           }
-          
-          // Create ghost image for dragging
-          try {
-            const ghostElement = document.createElement('div');
-            ghostElement.style.width = `${chartSize.width * CELL_WIDTH}px`;
-            ghostElement.style.height = `${chartSize.height * CELL_HEIGHT}px`;
-            ghostElement.style.background = 'rgba(0, 120, 215, 0.2)';
-            ghostElement.style.border = '2px dashed #0078d7';
-            document.body.appendChild(ghostElement);
-            e.dataTransfer.setDragImage(ghostElement, 10, 10);
-            
-            // Clean up the ghost element
-            setTimeout(() => {
-              document.body.removeChild(ghostElement);
-            }, 0);
-          } catch (error) {
-            console.error("Error with drag image:", error);
-          }
-        }}
-        onClick={(e) => {
-          e.stopPropagation();
-          // Click handling would be in main component
         }}
       >
-        {chartContent}
+        <div className="p-2 border-b bg-gray-50 flex justify-between items-center">
+          <h3 className="text-sm font-semibold">{chartConfig.title || 'Chart'}</h3>
+        </div>
+        <div style={{ height: 'calc(100% - 40px)' }}>
+          <Plot
+            data={data}
+            layout={adjustedLayout}
+            config={plotConfig}
+            style={{ width: '100%', height: '100%' }}
+          />
+        </div>
         
-        {/* Add resize handle if chart is selected */}
         {isSelected && (
           <div 
             className="chart-resize-handle"
@@ -704,104 +687,69 @@ const ChartManager = {
             }}
           />
         )}
-        
-        {/* Add selection border if chart is selected */}
-        {isSelected && (
-          <div 
-            className="chart-selection-border"
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              border: '2px solid #0078d7',
-              pointerEvents: 'none',
-              zIndex: 50
-            }}
-          />
-        )}
       </div>
     );
   },
 
-  // Chart controls component
+  // Render chart controls (for selected chart)
   renderChartControls: (selectedChart, data, chartSizes, setChartSizes, updateChartSize) => {
     if (!selectedChart) return null;
     
-    // Find the chart configuration in the selected cell
-    const cellValue = data[selectedChart.row]?.[selectedChart.col];
-    if (!cellValue || !cellValue.startsWith('CHART:') || !cellValue.includes(':START')) {
-      return null;
-    }
+    const { row, col } = selectedChart;
+    const chartConfig = ChartManager.getChartConfig(row, col, data);
     
-    try {
-      // Extract and parse the chart configuration
-      const chartConfigStr = cellValue.split(':').slice(1, -1).join(':');
-      const chartConfig = JSON.parse(chartConfigStr);
-      const chartKey = `${selectedChart.row}-${selectedChart.col}`;
-      const chartSize = chartSizes[chartKey] || chartConfig.size || DEFAULT_CHART_SIZE;
-      
-      return (
-        <div className="absolute bottom-16 right-8 bg-white border border-gray-300 rounded-md p-2 shadow-lg">
-          <div className="text-sm font-semibold mb-2">Chart Size</div>
-          <div className="flex items-center mb-1">
-            <span className="mr-2 text-sm">Width:</span>
-            <button 
-              className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm mr-1"
-              onClick={() => {
-                const newSize = { ...chartSize, width: Math.max(3, chartSize.width - 1) };
-                setChartSizes({ ...chartSizes, [chartKey]: newSize });
-                updateChartSize(selectedChart.row, selectedChart.col, newSize);
-              }}
-            >
-              -
-            </button>
-            <span className="mx-1">{chartSize.width}</span>
-            <button 
-              className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm ml-1"
-              onClick={() => {
-                const newSize = { ...chartSize, width: Math.min(15, chartSize.width + 1) };
-                setChartSizes({ ...chartSizes, [chartKey]: newSize });
-                updateChartSize(selectedChart.row, selectedChart.col, newSize);
-              }}
-            >
-              +
-            </button>
+    if (!chartConfig) return null;
+    
+    const chartKey = `${row}-${col}`;
+    const size = chartSizes[chartKey] || chartConfig.size || DEFAULT_CHART_SIZE;
+    
+    const handleSizeChange = (e, dimension) => {
+      const newSize = { ...size };
+      const value = parseInt(e.target.value);
+      if (!isNaN(value) && value > 0) {
+        newSize[dimension] = value;
+        
+        // Update the chart sizes state
+        const newChartSizes = { ...chartSizes };
+        newChartSizes[chartKey] = newSize;
+        setChartSizes(newChartSizes);
+        
+        // Actually resize the chart in the data grid
+        updateChartSize(row, col, newSize);
+      }
+    };
+    
+    return (
+      <div className="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-3 z-50 border border-gray-200 text-sm">
+        <h3 className="font-semibold mb-2 text-gray-700">Chart Options</h3>
+        <div className="flex flex-col space-y-2">
+          <div className="flex items-center">
+            <label className="mr-2 w-16 text-gray-600">Width:</label>
+            <input 
+              type="number" 
+              min="1" 
+              max="20"
+              value={size.width}
+              onChange={(e) => handleSizeChange(e, 'width')}
+              className="border border-gray-300 rounded px-2 py-1 w-16"
+            />
+            <span className="ml-1 text-gray-500 text-xs">cells</span>
           </div>
           <div className="flex items-center">
-            <span className="mr-2 text-sm">Height:</span>
-            <button 
-              className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm mr-1"
-              onClick={() => {
-                const newSize = { ...chartSize, height: Math.max(3, chartSize.height - 1) };
-                setChartSizes({ ...chartSizes, [chartKey]: newSize });
-                updateChartSize(selectedChart.row, selectedChart.col, newSize);
-              }}
-            >
-              -
-            </button>
-            <span className="mx-1">{chartSize.height}</span>
-            <button 
-              className="bg-gray-200 hover:bg-gray-300 rounded px-2 py-1 text-sm ml-1"
-              onClick={() => {
-                const newSize = { ...chartSize, height: Math.min(30, chartSize.height + 1) };
-                setChartSizes({ ...chartSizes, [chartKey]: newSize });
-                updateChartSize(selectedChart.row, selectedChart.col, newSize);
-              }}
-            >
-              +
-            </button>
-          </div>
-          <div className="text-xs mt-2 text-gray-500">
-            Drag chart to move it to a new location
+            <label className="mr-2 w-16 text-gray-600">Height:</label>
+            <input 
+              type="number" 
+              min="1" 
+              max="40"
+              value={size.height}
+              onChange={(e) => handleSizeChange(e, 'height')}
+              className="border border-gray-300 rounded px-2 py-1 w-16"
+            />
+            <span className="ml-1 text-gray-500 text-xs">cells</span>
           </div>
         </div>
-      );
-    } catch (error) {
-      console.error("Error rendering chart controls:", error);
-      return null;
-    }
+      </div>
+    );
   }
 };
 
